@@ -1,0 +1,26 @@
+{% extends 'quiz/base.html' %}
+
+{% block content %}
+<h1 class="mb-4">{{ quiz.title }}</h1>
+<form method="post">
+    {% csrf_token %}
+    {% for question in questions %}
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>Question {{ forloop.counter }}:</strong> {{ question.text }}
+        </div>
+        <div class="card-body">
+            {% for choice in question.choices.all %}
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="question_{{ question.id }}" id="choice_{{ choice.id }}" value="{{ choice.id }}" required>
+                <label class="form-check-label" for="choice_{{ choice.id }}">
+                    {{ choice.text }}
+                </label>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn btn-success btn-lg w-100">Submit Answers</button>
+</form>
+{% endblock %}

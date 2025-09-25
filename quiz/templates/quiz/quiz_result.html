@@ -1,0 +1,15 @@
+{% extends 'quiz/base.html' %}
+
+{% block content %}
+<div class="card text-center">
+    <div class="card-header">
+        <h2>Results for: {{ quiz.title }}</h2>
+    </div>
+    <div class="card-body">
+        <h1 class="display-1">{{ result.score }} / {{ total_questions }}</h1>
+        <p class="lead">You answered {{ result.score }} questions correctly!</p>
+        <a href="{% url 'leaderboard' quiz.id %}" class="btn btn-info">View Leaderboard</a>
+        <a href="{% url 'home' %}" class="btn btn-primary">Back to Home</a>
+    </div>
+</div>
+{% endblock %}
