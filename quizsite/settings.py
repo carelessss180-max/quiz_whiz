@@ -135,3 +135,6 @@ LOGIN_REDIRECT_URL = 'home'
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# quizsite/settings.py (at the bottom of the file)
+
+CSRF_TRUSTED_ORIGINS = ['https://quiz-whiz-n1j.onrender.com']
