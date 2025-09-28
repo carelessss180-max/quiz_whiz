@@ -1,26 +1,152 @@
 {% extends 'quiz/base.html' %}
 
 {% block content %}
-<h1 class="mb-4">{{ quiz.title }}</h1>
-<form method="post">
-    {% csrf_token %}
-    {% for question in questions %}
-    <div class="card mb-3">
-        <div class="card-header">
-            <strong>Question {{ forloop.counter }}:</strong> {{ question.text }}
-        </div>
-        <div class="card-body">
-            {% for choice in question.choices.all %}
-            <div class="form-check">
-                <input class="form-check-input" type="radio" name="question_{{ question.id }}" id="choice_{{ choice.id }}" value="{{ choice.id }}" required>
-                <label class="form-check-label" for="choice_{{ choice.id }}">
-                    {{ choice.text }}
-                </label>
-            </div>
-            {% endfor %}
-        </div>
+<h1 class="mb-4 text-center">{{ quiz.title }}</h1>
+
+<div id="quiz-container" class="card">
+    <div class="card-body">
+        <h3 id="question-text" class="card-title">Loading...</h3>
+        <div id="choices-container" class="my-4"></div>
     </div>
-    {% endfor %}
-    <button type="submit" class="btn btn-success btn-lg w-100">Submit Answers</button>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mt-3">
+    <p class="h4">Time Left: <span id="timer" class="badge bg-danger">0</span>s</p>
+    <p class="h5 text-muted">Question <span id="question-counter">1</span> of <span id="total-questions">?</span></p>
+</div>
+
+<form method="post" id="quiz-form">
+    {% csrf_token %}
 </form>
+
+{{ questions_data|json_script:"questions-data" }}
+
+<script>
+    // Load the question data from the Django template
+    const questionsData = JSON.parse(document.getElementById('questions-data').textContent);
+    const quizForm = document.getElementById('quiz-form');
+    
+    // DOM Elements
+    const questionTextEl = document.getElementById('question-text');
+    const choicesContainerEl = document.getElementById('choices-container');
+    const timerEl = document.getElementById('timer');
+    const questionCounterEl = document.getElementById('question-counter');
+    const totalQuestionsEl = document.getElementById('total-questions');
+    
+    // Quiz state
+    let quizState = {
+        currentQuestionIndex: 0,
+        timeLeft: 0,
+        answers: {}
+    };
+    let timerInterval = null;
+    const storageKey = `quizState_{{ quiz.id }}`;
+    let isQuizActive = true;
+
+    totalQuestionsEl.textContent = questionsData.length;
+
+    function handleVisibilityChange() {
+        if (document.visibilityState === 'hidden' && isQuizActive) {
+            alert("You have left the quiz tab. This question will be skipped.");
+            nextQuestion();
+        }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    function saveQuizState() {
+        quizState.timeLeft = timerEl.textContent;
+        sessionStorage.setItem(storageKey, JSON.stringify(quizState));
+    }
+
+    function loadQuizState() {
+        const savedState = sessionStorage.getItem(storageKey);
+        if (savedState) {
+            quizState = JSON.parse(savedState);
+            for (const [questionId, choiceId] of Object.entries(quizState.answers)) {
+                createHiddenInput(questionId, choiceId);
+            }
+            // UPDATED: Pass the saved time only when the page first loads
+            displayQuestion(quizState.currentQuestionIndex, quizState.timeLeft);
+        } else {
+            // Start a fresh quiz
+            displayQuestion(0);
+        }
+    }
+
+    // --- UPDATED FUNCTION LOGIC ---
+    function displayQuestion(index, resumeTime = null) {
+        clearInterval(timerInterval);
+        
+        if (index >= questionsData.length) {
+            submitQuiz();
+            return;
+        }
+
+        quizState.currentQuestionIndex = index;
+        const question = questionsData[index];
+        questionTextEl.textContent = question.text;
+        questionCounterEl.textContent = index + 1;
+        choicesContainerEl.innerHTML = '';
+
+        question.choices.forEach(choice => {
+            const choiceButton = document.createElement('button');
+            choiceButton.textContent = choice.text;
+            choiceButton.className = 'btn btn-outline-primary btn-lg d-block w-100 mb-2';
+            choiceButton.onclick = () => selectAnswer(question.id, choice.id);
+            choicesContainerEl.appendChild(choiceButton);
+        });
+        
+        // This new logic ensures a fresh timer unless explicitly resuming from a page load
+        const startTime = (resumeTime !== null && resumeTime > 0) ? resumeTime : question.time_limit;
+        startTimer(startTime);
+    }
+
+    function startTimer(duration) {
+        let timeLeft = parseInt(duration);
+        timerEl.textContent = timeLeft;
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            timerEl.textContent = timeLeft;
+            saveQuizState();
+            
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                nextQuestion();
+            }
+        }, 1000);
+    }
+    
+    function createHiddenInput(questionId, choiceId) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = `question_${questionId}`;
+        input.value = choiceId;
+        quizForm.appendChild(input);
+    }
+
+    function selectAnswer(questionId, choiceId) {
+        createHiddenInput(questionId, choiceId);
+        quizState.answers[questionId] = choiceId;
+        nextQuestion();
+    }
+
+    function nextQuestion() {
+        quizState.currentQuestionIndex++;
+        // No need to manage timeLeft here; displayQuestion now handles it
+        saveQuizState();
+        displayQuestion(quizState.currentQuestionIndex); // Call without resumeTime to force a reset
+    }
+
+    function submitQuiz() {
+        if (!isQuizActive) return; 
+        isQuizActive = false;
+        sessionStorage.removeItem(storageKey);
+        questionTextEl.textContent = "Quiz Finished! Submitting your answers...";
+        choicesContainerEl.innerHTML = '<div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div>';
+        timerEl.textContent = '0';
+        quizForm.submit();
+    }
+
+    loadQuizState();
+</script>
 {% endblock %}

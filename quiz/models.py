@@ -14,6 +14,7 @@ class Quiz(models.Model):
 class Question(models.Model):
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='questions')
     text = models.CharField(max_length=500)
+    time_limit = models.IntegerField(default=15, help_text="Time limit for this question in seconds")
 
     def __str__(self):
         return self.text

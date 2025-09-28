@@ -9,6 +9,7 @@ class ChoiceInline(admin.TabularInline):
 
 class QuestionAdmin(admin.ModelAdmin):
     inlines = [ChoiceInline]
+    list_display = ('text', 'quiz', 'time_limit') # <-- Correct indentation
 
 admin.site.register(Quiz)
 admin.site.register(Question, QuestionAdmin)
