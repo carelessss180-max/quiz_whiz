@@ -23,15 +23,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 
 # Email Configuration
-# Using Mailtrap SMTP for development/testing
+# Using real Gmail SMTP for production
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 
 if EMAIL_HOST_USER and EMAIL_HOST_PASSWORD:
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-    EMAIL_HOST = os.environ.get('EMAIL_HOST', 'sandbox.smtp.mailtrap.io')
-    EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 2525))
+    EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+    EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
     EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() == 'true'
+    print(f"[EMAIL] Using SMTP: {EMAIL_HOST}:{EMAIL_PORT}")
 else:
     # Fallback to console backend if credentials not provided
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
