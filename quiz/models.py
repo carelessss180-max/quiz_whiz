@@ -104,6 +104,94 @@ class PasswordReset(models.Model):
         expiry_time = self.created_at + timedelta(hours=24)
         return timezone.now() < expiry_time and not self.is_used
 
+# --- SMS OTP VIA TWILIO ---
+class SMSOTP(models.Model):
+    phone = models.CharField(max_length=20, unique=False, db_index=True)
+    otp = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_verified = models.BooleanField(default=False)
+    attempts = models.IntegerField(default=0, help_text="Failed verification attempts")
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.phone} - SMS OTP"
+    
+    @staticmethod
+    def generate_otp():
+        """Generate a 6-digit OTP"""
+        return ''.join(random.choices(string.digits, k=6))
+    
+    @staticmethod
+    def create_otp(phone):
+        """Create or refresh OTP for a phone number"""
+        otp_code = SMSOTP.generate_otp()
+        otp_obj, created = SMSOTP.objects.get_or_create(
+            phone=phone,
+            defaults={'otp': otp_code, 'is_verified': False, 'attempts': 0}
+        )
+        if not created:
+            # Refresh existing OTP
+            otp_obj.otp = otp_code
+            otp_obj.is_verified = False
+            otp_obj.attempts = 0
+            otp_obj.created_at = timezone.now()
+            otp_obj.save()
+        return otp_obj
+    
+    def is_valid(self):
+        """Check if OTP is not expired (valid for 10 minutes)"""
+        from datetime import timedelta
+        expiry_time = self.created_at + timedelta(minutes=10)
+        return timezone.now() < expiry_time
+    
+    def verify_otp(self, provided_otp):
+        """Verify OTP and check validity"""
+        if self.attempts >= 5:
+            return False, "Too many failed attempts"
+        
+        if not self.is_valid():
+            return False, "OTP expired"
+        
+        if self.otp == provided_otp:
+            self.is_verified = True
+            self.save()
+            return True, "SMS OTP verified successfully"
+        
+        self.attempts += 1
+        self.save()
+        return False, f"Invalid OTP ({5 - self.attempts} attempts remaining)"
+    
+    @staticmethod
+    def send_sms_otp(phone, otp_code):
+        """Send OTP via Twilio SMS"""
+        try:
+            from twilio.rest import Client
+            import os
+            
+            # Get Twilio credentials from environment
+            twilio_account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
+            twilio_auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
+            twilio_phone = os.environ.get('TWILIO_PHONE')
+            
+            if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
+                print("[SMS] Twilio credentials not configured - SMS not sent")
+                return False
+            
+            client = Client(twilio_account_sid, twilio_auth_token)
+            message = client.messages.create(
+                body=f"Your QuizWhiz OTP is: {otp_code}. Valid for 10 minutes.",
+                from_=twilio_phone,
+                to=phone
+            )
+            
+            print(f"[SMS] OTP sent to {phone}: {otp_code}")
+            return True
+        except Exception as e:
+            print(f"[SMS ERROR] Failed to send SMS OTP to {phone}: {e}")
+            return False
+
 # --- USER PROFILE FOR ONLINE STATUS ---
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
