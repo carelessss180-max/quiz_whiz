@@ -252,6 +252,128 @@ def logout_view(request):
         logout(request)
         return redirect('home')
 
+# --- PASSWORD RESET VIEWS ---
+def forgot_password(request):
+    """Request password reset link"""
+    if request.method == 'POST':
+        email = request.POST.get('email', '').strip()
+        try:
+            user = User.objects.get(email=email)
+            from .models import PasswordReset
+            from django.core.mail import EmailMultiAlternatives
+            
+            reset_obj = PasswordReset.create_reset(user)
+            
+            # Send reset email
+            reset_link = request.build_absolute_uri(f'/reset-password/{reset_obj.token}/')
+            
+            html_message = f"""
+            <html>
+                <body style="font-family: Arial, sans-serif; background-color: #f5f5f5; padding: 20px;">
+                    <div style="max-width: 600px; margin: 0 auto; background-color: white; border-radius: 8px; padding: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <h2 style="color: #333;">Reset Your Password 🔐</h2>
+                        <p style="color: #666; font-size: 16px;">Hi {user.first_name or user.username},</p>
+                        
+                        <p style="color: #666;">We received a request to reset your password. Click the button below to set a new password:</p>
+                        
+                        <div style="text-align: center; margin: 30px 0;">
+                            <a href="{reset_link}" style="display: inline-block; background-color: #007bff; color: white; padding: 12px 30px; text-decoration: none; border-radius: 4px; font-weight: bold;">Reset Password</a>
+                        </div>
+                        
+                        <p style="color: #999; font-size: 13px;">This link is valid for 24 hours. If you didn't request this, please ignore this email.</p>
+                        
+                        <p style="color: #999; font-size: 13px;">Or copy this link: <code style="background-color: #f0f0f0; padding: 2px 5px; border-radius: 3px;">{reset_link}</code></p>
+                        
+                        <hr style="border: none; border-top: 1px solid #eee; margin: 25px 0;">
+                        <p style="color: #999; font-size: 12px; text-align: center;">QuizWhiz © 2024</p>
+                    </div>
+                </body>
+            </html>
+            """
+            
+            msg = EmailMultiAlternatives(
+                subject='QuizWhiz - Password Reset Request',
+                body=f'Click this link to reset your password: {reset_link}',
+                from_email='noreply@quizwhiz.com',
+                to=[user.email]
+            )
+            msg.attach_alternative(html_message, "text/html")
+            msg.send(fail_silently=False)
+            
+            print(f"[EMAIL] Password reset link sent to {user.email}")
+            
+            return render(request, 'quiz/forgot_password.html', {
+                'success': True,
+                'message': 'Password reset link sent to your email!'
+            })
+        except User.DoesNotExist:
+            return render(request, 'quiz/forgot_password.html', {
+                'success': True,
+                'message': 'If this email exists, you will receive a password reset link.'
+            })
+        except Exception as e:
+            print(f"[EMAIL ERROR] Failed to send password reset: {e}")
+            return render(request, 'quiz/forgot_password.html', {
+                'error': 'Failed to send reset link. Please try again.'
+            })
+    
+    return render(request, 'quiz/forgot_password.html')
+
+
+def reset_password(request, token):
+    """Reset password using token"""
+    from .models import PasswordReset
+    
+    try:
+        reset_obj = PasswordReset.objects.get(token=token)
+        
+        if not reset_obj.is_valid():
+            return render(request, 'quiz/reset_password.html', {
+                'error': 'This reset link has expired or has been used.'
+            })
+        
+        if request.method == 'POST':
+            password1 = request.POST.get('password1', '').strip()
+            password2 = request.POST.get('password2', '').strip()
+            
+            if not password1 or not password2:
+                return render(request, 'quiz/reset_password.html', {
+                    'error': 'Please enter a password.'
+                })
+            
+            if password1 != password2:
+                return render(request, 'quiz/reset_password.html', {
+                    'error': 'Passwords do not match.'
+                })
+            
+            if len(password1) < 8:
+                return render(request, 'quiz/reset_password.html', {
+                    'error': 'Password must be at least 8 characters long.'
+                })
+            
+            # Update password
+            user = reset_obj.user
+            user.set_password(password1)
+            user.save()
+            
+            # Mark token as used
+            reset_obj.is_used = True
+            reset_obj.save()
+            
+            print(f"[AUTH] Password reset for {user.username}")
+            
+            return render(request, 'quiz/reset_password.html', {
+                'success': True,
+                'message': 'Password reset successfully! You can now login with your new password.'
+            })
+        
+        return render(request, 'quiz/reset_password.html', {'token': token})
+    
+    except PasswordReset.DoesNotExist:
+        return render(request, 'quiz/reset_password.html', {
+            'error': 'Invalid reset link.'
+        })
+
 # User dashboard view
 @login_required
 def dashboard(request):
@@ -339,6 +461,13 @@ def quiz_result(request, quiz_id):
     quiz = get_object_or_404(Quiz, pk=quiz_id)
     result = QuizResult.objects.filter(user=request.user, quiz=quiz).latest('timestamp')
     total_questions = quiz.questions.count()
+    
+    # Send email notification
+    from .models import EmailNotification
+    try:
+        EmailNotification.create_quiz_result_email(request.user, result)
+    except Exception as e:
+        print(f"[EMAIL] Failed to send quiz result email: {e}")
     
     # Check if this is from robot challenge
     is_robot_challenge = request.GET.get('challenge') == 'true'
@@ -930,6 +1059,16 @@ def match_result(request, match_id):
     # Check if user is part of this match
     if request.user not in [match.player1, match.player2]:
         return HttpResponseForbidden("You are not part of this match.")
+    
+    # Send email notification to both players
+    from .models import EmailNotification
+    try:
+        if match.player1.email:
+            EmailNotification.create_match_result_email(match.player1, match)
+        if match.player2 and match.player2.email:
+            EmailNotification.create_match_result_email(match.player2, match)
+    except Exception as e:
+        print(f"[EMAIL] Failed to send match result email: {e}")
     
     # Check if both players have completed
     if match.player1_score is None or match.player2_score is None:

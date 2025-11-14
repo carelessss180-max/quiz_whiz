@@ -64,6 +64,46 @@ class EmailOTP(models.Model):
         self.save()
         return False, f"Invalid OTP ({5 - self.attempts} attempts remaining)"
 
+# --- PASSWORD RESET ---
+class PasswordReset(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='password_reset')
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_used = models.BooleanField(default=False)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Password Reset for {self.user.username}"
+    
+    @staticmethod
+    def generate_token():
+        """Generate a secure reset token"""
+        import secrets
+        return secrets.token_urlsafe(48)
+    
+    @staticmethod
+    def create_reset(user):
+        """Create or refresh password reset token"""
+        token = PasswordReset.generate_token()
+        reset_obj, created = PasswordReset.objects.get_or_create(
+            user=user,
+            defaults={'token': token, 'is_used': False}
+        )
+        if not created:
+            reset_obj.token = token
+            reset_obj.is_used = False
+            reset_obj.created_at = timezone.now()
+            reset_obj.save()
+        return reset_obj
+    
+    def is_valid(self):
+        """Check if token is not expired (valid for 24 hours)"""
+        from datetime import timedelta
+        expiry_time = self.created_at + timedelta(hours=24)
+        return timezone.now() < expiry_time and not self.is_used
+
 # --- USER PROFILE FOR ONLINE STATUS ---
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
@@ -284,3 +324,170 @@ class Notification(models.Model):
     
     def __str__(self):
         return f"{self.user.username} - {self.title}"
+
+# --- EMAIL NOTIFICATIONS ---
+class EmailNotification(models.Model):
+    EMAIL_TYPES = [
+        ('quiz_result', 'Quiz Result'),
+        ('match_result', 'Match Result'),
+        ('password_reset', 'Password Reset'),
+        ('otp_reminder', 'OTP Reminder'),
+        ('feature_update', 'Feature Update'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='email_notifications')
+    email_type = models.CharField(max_length=20, choices=EMAIL_TYPES)
+    subject = models.CharField(max_length=200)
+    body = models.TextField()
+    recipient_email = models.EmailField()
+    is_sent = models.BooleanField(default=False)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    # Reference to quiz result or match if applicable
+    quiz_result = models.ForeignKey(QuizResult, on_delete=models.SET_NULL, null=True, blank=True)
+    matchmaking = models.ForeignKey(Matchmaking, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['is_sent', '-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.email_type} - {self.recipient_email}"
+    
+    @staticmethod
+    def create_quiz_result_email(user, quiz_result):
+        """Create email notification for quiz result"""
+        from django.core.mail import EmailMultiAlternatives
+        
+        subject = f"Quiz Result: {quiz_result.quiz.title}"
+        body = f"You scored {quiz_result.score} points on {quiz_result.quiz.title}"
+        
+        email_notif = EmailNotification.objects.create(
+            user=user,
+            email_type='quiz_result',
+            subject=subject,
+            body=body,
+            recipient_email=user.email,
+            quiz_result=quiz_result
+        )
+        
+        # Create HTML email
+        html_message = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; background-color: #f5f5f5; padding: 20px;">
+                <div style="max-width: 600px; margin: 0 auto; background-color: white; border-radius: 8px; padding: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <h2 style="color: #333;">Quiz Complete! 🎉</h2>
+                    <p style="color: #666; font-size: 16px;">Hi {user.first_name or user.username},</p>
+                    
+                    <div style="background-color: #f0f0f0; border-left: 4px solid #007bff; padding: 20px; margin: 25px 0; border-radius: 4px;">
+                        <p style="margin: 0; color: #666;">Quiz: <strong>{quiz_result.quiz.title}</strong></p>
+                        <p style="margin: 10px 0 0 0; color: #666;">Your Score: <strong style="color: #007bff; font-size: 20px;">{quiz_result.score} points</strong></p>
+                    </div>
+                    
+                    <p style="color: #666;">Check your dashboard to see detailed results and compare with other players!</p>
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 25px 0;">
+                    <p style="color: #999; font-size: 12px; text-align: center;">QuizWhiz © 2024</p>
+                </div>
+            </body>
+        </html>
+        """
+        
+        try:
+            msg = EmailMultiAlternatives(
+                subject=subject,
+                body=body,
+                from_email='noreply@quizwhiz.com',
+                to=[user.email]
+            )
+            msg.attach_alternative(html_message, "text/html")
+            msg.send(fail_silently=False)
+            
+            email_notif.is_sent = True
+            email_notif.sent_at = timezone.now()
+            email_notif.save()
+            print(f"[EMAIL] Quiz result sent to {user.email}")
+        except Exception as e:
+            print(f"[EMAIL ERROR] Failed to send quiz result to {user.email}: {e}")
+        
+        return email_notif
+    
+    @staticmethod
+    def create_match_result_email(user, matchmaking):
+        """Create email notification for match result"""
+        from django.core.mail import EmailMultiAlternatives
+        
+        subject = f"Match Result: {matchmaking.quiz.title}"
+        
+        # Determine winner
+        if matchmaking.player1 == user:
+            opponent = matchmaking.player2
+            user_score = matchmaking.player1_score
+            opponent_score = matchmaking.player2_score
+        else:
+            opponent = matchmaking.player1
+            user_score = matchmaking.player2_score
+            opponent_score = matchmaking.player1_score
+        
+        if user_score > opponent_score:
+            result_text = "🎉 You Won!"
+            status_color = "#28a745"
+        elif user_score < opponent_score:
+            result_text = "Better luck next time!"
+            status_color = "#dc3545"
+        else:
+            result_text = "It's a Tie!"
+            status_color = "#ffc107"
+        
+        body = f"{result_text} You scored {user_score} vs {opponent.username}'s {opponent_score}"
+        
+        email_notif = EmailNotification.objects.create(
+            user=user,
+            email_type='match_result',
+            subject=subject,
+            body=body,
+            recipient_email=user.email,
+            matchmaking=matchmaking
+        )
+        
+        html_message = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; background-color: #f5f5f5; padding: 20px;">
+                <div style="max-width: 600px; margin: 0 auto; background-color: white; border-radius: 8px; padding: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <h2 style="color: #333;">Match Complete!</h2>
+                    <p style="color: #666; font-size: 16px;">Hi {user.first_name or user.username},</p>
+                    
+                    <div style="background-color: #f0f0f0; border-left: 4px solid {status_color}; padding: 20px; margin: 25px 0; border-radius: 4px;">
+                        <p style="margin: 0; color: #666;">Quiz: <strong>{matchmaking.quiz.title}</strong></p>
+                        <p style="margin: 10px 0 0 0; font-size: 18px; color: {status_color};"><strong>{result_text}</strong></p>
+                        <p style="margin: 15px 0 0 0; color: #666;">Your Score: <strong>{user_score}</strong> | Opponent ({opponent.username}): <strong>{opponent_score}</strong></p>
+                    </div>
+                    
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 25px 0;">
+                    <p style="color: #999; font-size: 12px; text-align: center;">QuizWhiz © 2024</p>
+                </div>
+            </body>
+        </html>
+        """
+        
+        try:
+            msg = EmailMultiAlternatives(
+                subject=subject,
+                body=body,
+                from_email='noreply@quizwhiz.com',
+                to=[user.email]
+            )
+            msg.attach_alternative(html_message, "text/html")
+            msg.send(fail_silently=False)
+            
+            email_notif.is_sent = True
+            email_notif.sent_at = timezone.now()
+            email_notif.save()
+            print(f"[EMAIL] Match result sent to {user.email}")
+        except Exception as e:
+            print(f"[EMAIL ERROR] Failed to send match result to {user.email}: {e}")
+        
+        return email_notif
