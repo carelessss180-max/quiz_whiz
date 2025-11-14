@@ -1,0 +1,140 @@
+{% extends 'quiz/base.html' %}
+
+{% block content %}
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            {% if waiting %}
+                <div class="card shadow-lg">
+                    <div class="card-header bg-warning text-dark">
+                        <h2 class="mb-0"><i class="bi bi-hourglass-split me-2"></i>Waiting for Opponent</h2>
+                    </div>
+                    <div class="card-body p-5 text-center">
+                        <p class="lead mb-3">You've completed the quiz!</p>
+                        <p class="text-muted mb-4">Waiting for your opponent to finish...</p>
+                        
+                        <div class="spinner-border text-warning mb-4" style="width: 3rem; height: 3rem;" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <strong>Your Score: {{ user_score }} / {{ quiz.questions.count }}</strong>
+                        </div>
+
+                        <a href="{% url 'home' %}" class="btn btn-secondary">
+                            <i class="bi bi-house-door-fill me-2"></i>Back to Home
+                        </a>
+                    </div>
+                </div>
+
+                <script>
+                    // Auto-refresh every 2 seconds to check if opponent finished
+                    setInterval(function() {
+                        location.reload();
+                    }, 2000);
+                </script>
+            {% else %}
+                <div class="card shadow-lg">
+                    <div class="card-header">
+                        <h2 class="card-title text-center mb-0"><i class="bi bi-trophy-fill me-2"></i>Match Results</h2>
+                    </div>
+                    <div class="card-body p-5">
+                        {% if user_score > opponent_score %}
+                            <h1 class="display-4 text-success fw-bold text-center mb-4">🎉 You Win! 🎉</h1>
+                        {% elif user_score < opponent_score %}
+                            <h1 class="display-4 text-danger fw-bold text-center mb-4">💔 You Lost! 💔</h1>
+                        {% else %}
+                            <h1 class="display-4 text-warning fw-bold text-center mb-4">🤝 It's a Tie! 🤝</h1>
+                        {% endif %}
+
+                        <hr class="my-4">
+
+                        <div class="row">
+                            <div class="col-md-6 border-end text-center mb-3 mb-md-0">
+                                <h5 class="fw-light mb-3">You</h5>
+                                <div class="display-1 text-primary">{{ user_score }}</div>
+                                <p class="text-muted">/ {{ quiz.questions.count }} Points</p>
+                            </div>
+                            <div class="col-md-6 text-center">
+                                <h5 class="fw-light mb-3">{{ opponent_name }}</h5>
+                                <div class="display-1 text-danger">{{ opponent_score }}</div>
+                                <p class="text-muted">/ {{ quiz.questions.count }} Points</p>
+                            </div>
+                        </div>
+
+                        <hr class="my-4">
+
+                        <div class="alert alert-info">
+                            <strong>{{ quiz.title }}</strong><br>
+                            Topic: {{ quiz.topic }}<br>
+                            Difficulty: <span class="badge bg-secondary">{{ quiz.difficulty }}</span>
+                        </div>
+
+                        <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+                            <a href="{% url 'home' %}" class="btn btn-primary btn-lg">
+                                <i class="bi bi-house-door-fill me-2"></i>Back to Home
+                            </a>
+                            <a href="{% url 'leaderboard' quiz.id %}" class="btn btn-success btn-lg">
+                                <i class="bi bi-trophy-fill me-2"></i>View Leaderboard
+                            </a>
+                            <button type="button" class="btn btn-outline-primary btn-lg" onclick="shareMatchResult('{{ match.id }}', this)">
+                                <i class="bi bi-share-fill me-2"></i>Share Result
+                            </button>
+                            <a href="{% url 'export_match_result_pdf' match.id %}" class="btn btn-warning btn-lg">
+                                <i class="bi bi-download me-2"></i>Download PDF
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function shareMatchResult(matchId, btn) {
+    if (!confirm('Share this match result to your profile?')) return;
+    btn.disabled = true;
+    fetch(`/match/${matchId}/share/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(resp => resp.json())
+    .then(data => {
+        if (data.success) {
+            window.location.href = data.redirect;
+        } else {
+            alert('Error: ' + (data.error || 'Failed to share'));
+            btn.disabled = false;
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert('An error occurred while sharing the result');
+        btn.disabled = false;
+    });
+}
+</script>
+{% endblock %}

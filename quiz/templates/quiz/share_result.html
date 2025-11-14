@@ -1,0 +1,119 @@
+{% extends 'quiz/base.html' %}
+
+{% block content %}
+
+<style>
+    .share-container {
+        max-width: 600px;
+        margin: 3rem auto;
+    }
+    .share-card {
+        background: white;
+        border-radius: 15px;
+        padding: 2rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    .result-preview {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 10px;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    .score-display {
+        font-size: 3rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+    .quiz-title-share {
+        font-size: 1.25rem;
+        margin-bottom: 1rem;
+    }
+    .message-input {
+        border-radius: 8px;
+        border: 2px solid #e9ecef;
+        padding: 0.75rem;
+        font-size: 1rem;
+        transition: border-color 0.3s ease;
+    }
+    .message-input:focus {
+        border-color: #667eea;
+        outline: none;
+    }
+    .toggle-container {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-top: 1.5rem;
+    }
+    .btn-share {
+        width: 100%;
+        padding: 0.75rem;
+        font-weight: 600;
+        border-radius: 8px;
+        font-size: 1.05rem;
+    }
+</style>
+
+<div class="share-container">
+    <h1 class="text-center mb-4">
+        <i class="bi bi-share-fill me-2"></i>Share Your Result
+    </h1>
+
+    <div class="share-card">
+        <!-- Result Preview -->
+        <div class="result-preview">
+            <div class="quiz-title-share">{{ quiz_result.quiz.title }}</div>
+            <div class="score-display">
+                {{ quiz_result.score }}/{{ quiz_result.quiz.questions.count }}
+            </div>
+            <div>
+                <i class="bi bi-calendar-event me-1"></i>
+                {{ quiz_result.timestamp|date:"M d, Y" }}
+            </div>
+        </div>
+
+        <!-- Share Form -->
+        <form method="POST" action="">
+            {% csrf_token %}
+
+            <!-- Message Input -->
+            <div class="mb-3">
+                <label for="message" class="form-label fw-600">
+                    <i class="bi bi-chat-left-quote me-2"></i>Add a Message (Optional)
+                </label>
+                <textarea class="message-input form-control" 
+                          id="message" 
+                          name="message" 
+                          rows="4" 
+                          placeholder="Share your thoughts, strategy, or celebrate your achievement!"
+                          maxlength="500"></textarea>
+                <small class="text-muted">500 characters max</small>
+            </div>
+
+            <!-- Privacy Toggle -->
+            <div class="toggle-container">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="is_public" name="is_public" checked>
+                    <label class="form-check-label" for="is_public">
+                        <i class="bi bi-globe me-1"></i>Make this public
+                    </label>
+                </div>
+                <small class="text-muted ms-auto">Visible on your profile</small>
+            </div>
+
+            <!-- Buttons -->
+            <div class="d-grid gap-2 mt-4">
+                <button type="submit" class="btn btn-primary btn-share">
+                    <i class="bi bi-check2-circle me-2"></i>Share Result
+                </button>
+                <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-x-circle me-2"></i>Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

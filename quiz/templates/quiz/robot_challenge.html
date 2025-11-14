@@ -1,0 +1,50 @@
+{% extends 'quiz/base.html' %}
+
+{% block content %}
+
+<style>
+    .challenge-hero {
+        background: linear-gradient(90deg, #f0f7ff 0%, #f9eef8 100%);
+        padding: 2.5rem 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 2.5rem;
+        box-shadow: 0 10px 26px rgba(50, 50, 93, 0.05);
+        text-align: center;
+    }
+    .challenge-hero h1 {
+        font-weight: 800;
+        margin: 0 0 0.5rem 0;
+        font-size: 2.8rem;
+        color: #0f172a;
+    }
+    .challenge-hero p { color: #4b5563; font-size: 1.05rem; margin: 0; }
+</style>
+
+<div class="challenge-hero">
+    <h1>🤖 Robot Challenge 🤖</h1>
+    <p>Think you can beat our AI? Select a quiz to start the competition!</p>
+</div>
+
+<div class="list-group">
+    {% for quiz in quizzes %}
+        <a href="{% url 'quiz_detail' quiz.id %}?challenge=true" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3">
+            <div>
+                <h5 class="mb-1">{{ quiz.title }}</h5>
+                <small class="text-muted">Topic: {{ quiz.topic }}</small>
+            </div>
+            <span class="btn btn-danger">
+                <i class="bi bi-joystick me-2"></i> Start Challenge
+            </span>
+        </a>
+    {% empty %}
+        <p class="text-center">No challenges are available yet.</p>
+    {% endfor %}
+</div>
+
+<div class="text-center mt-4">
+    <a href="{% url 'home' %}" class="btn btn-primary">
+        <i class="bi bi-arrow-left-circle-fill me-2"></i> Back to Home
+    </a>
+</div>
+
+{% endblock %}

@@ -39,7 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'quiz'
+    'quiz',
 ]
 
 MIDDLEWARE = [
@@ -51,6 +51,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'quiz.middleware.UserActivityMiddleware',  # Track user online status
 ]
 
 ROOT_URLCONF = 'quizsite.urls'
@@ -135,6 +136,26 @@ LOGIN_REDIRECT_URL = 'home'
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# Media Files Configuration (for user uploads like profile photos)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
 # quizsite/settings.py (at the bottom of the file)
 
 CSRF_TRUSTED_ORIGINS = ['https://quiz-whiz-n1j.onrender.com']
+
+# quizsite/settings.py (file ke end mein)
+
+# Django को बताएँ कि WebSocket सर्वर (Daphne) का इस्तेमाल करना है
+ASGI_APPLICATION = 'quizsite.asgi.application'
+
+# Channels को बताएँ कि Redis का इस्तेमाल "वेटING रूम" के लिए करना है
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)], # Yeh Redis ka default address hai
+        },
+    },
+}

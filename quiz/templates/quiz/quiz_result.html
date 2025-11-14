@@ -1,15 +1,226 @@
 {% extends 'quiz/base.html' %}
 
 {% block content %}
-<div class="card text-center">
-    <div class="card-header">
-        <h2>Results for: {{ quiz.title }}</h2>
+
+<style>
+    .result-card {
+        border-radius: 15px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+    }
+    .result-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 15px 15px 0 0;
+    }
+    .score-section {
+        padding: 2rem;
+        background: white;
+    }
+    .score-box {
+        text-align: center;
+        padding: 2rem;
+        background: #f8f9fa;
+        border-radius: 10px;
+        margin-bottom: 1rem;
+    }
+    .score-number {
+        font-size: 3rem;
+        font-weight: 700;
+        color: #667eea;
+    }
+    .score-label {
+        color: #6c757d;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        margin-top: 0.5rem;
+    }
+    .accuracy-meter {
+        height: 30px;
+        border-radius: 15px;
+        background: #e9ecef;
+        overflow: hidden;
+    }
+    .accuracy-fill {
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 700;
+        font-size: 0.9rem;
+    }
+    .comparison-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+    }
+    @media (max-width: 768px) {
+        .comparison-row {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<!-- Robot Challenge Results (with AI score) -->
+{% if is_robot_challenge and ai_score is not None %}
+
+    <div class="result-card">
+        <div class="result-header text-center">
+            <h1 class="mb-3">🤖 Robot Challenge Results</h1>
+            {% if result.score > ai_score %}
+                <h2 class="text-success">🎉 You Win! 🎉</h2>
+                <p class="mb-0">Congratulations, you beat the AI Robot!</p>
+            {% elif result.score < ai_score %}
+                <h2 class="text-warning">🤖 AI Wins! 🤖</h2>
+                <p class="mb-0">Better luck next time. The AI Robot was too strong!</p>
+            {% else %}
+                <h2 class="text-info">🤝 It's a Tie! 🤝</h2>
+                <p class="mb-0">You matched the AI Robot's score perfectly!</p>
+            {% endif %}
+        </div>
+
+        <div class="score-section">
+            <div class="comparison-row">
+                <!-- Your Score -->
+                <div class="score-box">
+                    <div class="score-label">Your Score</div>
+                    <div class="score-number">{{ result.score }}</div>
+                    <div style="font-size: 0.9rem; color: #6c757d;">out of {{ total_questions }}</div>
+                    <div style="margin-top: 1rem;">
+                        <small class="text-muted">Accuracy</small>
+                        <div class="accuracy-meter mt-2">
+                            {% if accuracy >= 70 %}
+                                <div class="accuracy-fill" style="width: {{ accuracy }}%; background: linear-gradient(90deg, #28a745, #20c997);">
+                                    {{ accuracy }}%
+                                </div>
+                            {% elif accuracy >= 50 %}
+                                <div class="accuracy-fill" style="width: {{ accuracy }}%; background: linear-gradient(90deg, #ffc107, #ff9800);">
+                                    {{ accuracy }}%
+                                </div>
+                            {% else %}
+                                <div class="accuracy-fill" style="width: {{ accuracy }}%; background: linear-gradient(90deg, #f44336, #e91e63);">
+                                    {{ accuracy }}%
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Score -->
+                <div class="score-box">
+                    <div class="score-label">AI Robot's Score</div>
+                    <div class="score-number" style="color: #667eea;">{{ ai_score }}</div>
+                    <div style="font-size: 0.9rem; color: #6c757d;">out of {{ total_questions }}</div>
+                    <div style="margin-top: 1rem;">
+                        <small class="text-muted">Accuracy</small>
+                        <div class="accuracy-meter mt-2">
+                            <div class="accuracy-fill" style="width: {% widthratio ai_score total_questions 100 %}%; background: linear-gradient(90deg, #667eea, #764ba2);">
+                                {% widthratio ai_score total_questions 100 %}%
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="my-4">
+
+            <div class="text-center">
+                <a href="{% url 'leaderboard' quiz.id %}" class="btn btn-info me-2"><i class="bi bi-trophy-fill me-2"></i>View Leaderboard</a>
+                <a href="{% url 'share_result' result.id %}" class="btn btn-success me-2"><i class="bi bi-share-fill me-2"></i>Share Result</a>
+                <a href="{% url 'export_quiz_result_pdf' quiz.id %}?challenge=true&ai_score={{ ai_score }}" class="btn btn-warning me-2"><i class="bi bi-download me-2"></i>Download PDF</a>
+                <a href="{% url 'robot_challenge' %}" class="btn btn-primary"><i class="bi bi-arrow-left me-2"></i>Back to Challenge</a>
+            </div>
+        </div>
     </div>
-    <div class="card-body">
-        <h1 class="display-1">{{ result.score }} / {{ total_questions }}</h1>
-        <p class="lead">You answered {{ result.score }} questions correctly!</p>
-        <a href="{% url 'leaderboard' quiz.id %}" class="btn btn-info">View Leaderboard</a>
-        <a href="{% url 'home' %}" class="btn btn-primary">Back to Home</a>
+
+<!-- Regular Quiz Results (no AI score, only accuracy) -->
+{% else %}
+
+    <div class="result-card">
+        <div class="result-header text-center">
+            <h1 class="mb-2">{{ quiz.title }}</h1>
+            <h3>Quiz Results</h3>
+        </div>
+
+        <div class="score-section">
+            <div class="score-box">
+                <div class="score-label">Your Score</div>
+                <div class="score-number">{{ result.score }}</div>
+                <div style="font-size: 0.9rem; color: #6c757d; margin-bottom: 1.5rem;">out of {{ total_questions }}</div>
+
+                <div>
+                    <small class="text-muted d-block mb-2">Accuracy</small>
+                    <div class="accuracy-meter">
+                        {% if accuracy >= 70 %}
+                            <div class="accuracy-fill" style="width: {{ accuracy }}%; background: linear-gradient(90deg, #28a745, #20c997);">
+                                {{ accuracy }}%
+                            </div>
+                        {% elif accuracy >= 50 %}
+                            <div class="accuracy-fill" style="width: {{ accuracy }}%; background: linear-gradient(90deg, #ffc107, #ff9800);">
+                                {{ accuracy }}%
+                            </div>
+                        {% else %}
+                            <div class="accuracy-fill" style="width: {{ accuracy }}%; background: linear-gradient(90deg, #f44336, #e91e63);">
+                                {{ accuracy }}%
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <hr class="my-4">
+
+            <div class="text-center">
+                <a href="{% url 'leaderboard' quiz.id %}" class="btn btn-info me-2"><i class="bi bi-trophy-fill me-2"></i>View Leaderboard</a>
+                <a href="{% url 'share_result' result.id %}" class="btn btn-success me-2"><i class="bi bi-share-fill me-2"></i>Share Result</a>
+                <a href="{% url 'export_quiz_result_pdf' quiz.id %}" class="btn btn-warning me-2"><i class="bi bi-download me-2"></i>Download PDF</a>
+                <a href="{% url 'home' %}" class="btn btn-primary"><i class="bi bi-house-door-fill me-2"></i>Back to Home</a>
+            </div>
+        </div>
+    </div>
+
+{% endif %}
+
+<!-- Common: Show all answered questions -->
+<hr class="my-4">
+<div class="text-start">
+    <h4>Your Answers</h4>
+    <div class="list-group">
+        {% for item in answered_questions %}
+            <div class="list-group-item">
+                <div class="d-flex w-100 justify-content-between">
+                    <h5 class="mb-1">Question {{ forloop.counter }}:</h5>
+                    {% if item.is_correct %}
+                        <small class="text-success">Correct</small>
+                    {% else %}
+                        <small class="text-danger">Incorrect</small>
+                    {% endif %}
+                </div>
+                <p class="mb-1">{{ item.question.text }}</p>
+                <p class="mb-1"><strong>Your answer:</strong>
+                    {% if item.selected %}
+                        {{ item.selected.text }}
+                    {% else %}
+                        <em>No answer</em>
+                    {% endif %}
+                </p>
+                <p class="mb-0"><strong>Correct answer:</strong>
+                    {% if item.correct %}
+                        {{ item.correct.text }}
+                    {% else %}
+                        <em>Not available</em>
+                    {% endif %}
+                </p>
+                {% if item.correct and item.correct.explanation %}
+                    <p class="mt-2 mb-0 text-muted"><strong>Brief:</strong> {{ item.correct.explanation }}</p>
+                {% elif item.selected and item.selected.explanation %}
+                    <p class="mt-2 mb-0 text-muted"><strong>Brief:</strong> {{ item.selected.explanation }}</p>
+                {% endif %}
+            </div>
+        {% endfor %}
     </div>
 </div>
+
 {% endblock %}

@@ -1,0 +1,171 @@
+{% extends 'quiz/base.html' %}
+
+{% block content %}
+
+<div class="container mt-4">
+    <div class="mb-4 d-flex justify-content-between align-items-center">
+        <div>
+            <h2><i class="bi bi-controller me-2"></i>{{ quiz.title }}</h2>
+            <p class="text-muted">{{ quiz.topic }} - <span class="badge bg-info">{{ quiz.difficulty }}</span></p>
+        </div>
+        <div class="alert alert-warning mb-0" role="alert">
+            <h5 class="mb-0">
+                <i class="bi bi-hourglass-split me-2"></i>Time: <span id="timer" class="fw-bold">01:00</span>
+            </h5>
+        </div>
+    </div>
+
+    <form method="POST" id="quizForm">
+        {% csrf_token %}
+        {% for question in questions_data %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Question {{ forloop.counter }}</h5>
+            </div>
+            <div class="card-body">
+                <p class="fs-5 fw-bold mb-3">{{ question.text }}</p>
+
+                {% for choice in question.choices %}
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="radio" name="question_{{ question.id }}" id="choice_{{ choice.id }}" value="{{ choice.id }}">
+                    <label class="form-check-label" for="choice_{{ choice.id }}">
+                        {{ choice.text }}
+                    </label>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+
+        <div class="text-center">
+            <button type="submit" class="btn btn-success btn-lg" id="submitBtn">
+                <i class="bi bi-check-circle me-2"></i>Submit Answers
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Modal shown when user returns to tab after switching away -->
+<div class="modal fade" id="tabWarningModal" tabindex="-1" aria-labelledby="tabWarningModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="tabWarningModalLabel">⚠️ Warning</h5>
+      </div>
+      <div class="modal-body">
+        You switched to another tab during the quiz. This is not allowed in competitive mode.
+        <div class="mt-2">The quiz will be submitted automatically in <span id="tabWarningCountdown">5</span> seconds.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-danger" id="tabWarningOkBtn">Submit Now</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+    // Global state
+    let isSubmitted = false;
+    let timeLeft = 60; // seconds
+    let timerInterval = null;
+
+    // DOM elements (now present because script is after the form)
+    const timerElement = document.getElementById('timer');
+    const quizForm = document.getElementById('quizForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const modalEl = document.getElementById('tabWarningModal');
+
+    // Timer update
+    function updateTimer() {
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        timerElement.textContent = String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+
+        if (timeLeft <= 10) {
+            timerElement.parentElement.classList.remove('alert-warning');
+            timerElement.parentElement.classList.add('alert-danger');
+        }
+
+        if (timeLeft === 0) {
+            clearInterval(timerInterval);
+            if (submitBtn) submitBtn.disabled = true;
+            timerElement.textContent = '00:00';
+            alert('Time is up! Your answers have been submitted.');
+            isSubmitted = true;
+            quizForm.submit();
+        }
+
+        timeLeft--;
+    }
+
+    timerInterval = setInterval(updateTimer, 1000);
+
+    // Submit button handler
+    submitBtn.addEventListener('click', function(e) {
+        if (timeLeft <= 0) {
+            e.preventDefault();
+            alert('Time is up! You cannot submit anymore.');
+        } else {
+            isSubmitted = true;
+        }
+    });
+
+    // Tab-switch handling: when tab becomes hidden, mark pending; when visible again show modal
+    let pendingTabSwitch = false;
+
+    document.addEventListener('visibilitychange', function() {
+        console.log('visibilitychange -> hidden:', document.hidden, 'isSubmitted:', isSubmitted, 'pending:', pendingTabSwitch);
+
+        if (document.hidden && !isSubmitted) {
+            // User left the tab — pause timer and mark pending
+            pendingTabSwitch = true;
+            clearInterval(timerInterval);
+            if (submitBtn) submitBtn.disabled = true;
+            console.log('Tab left: pendingTabSwitch set');
+        }
+
+        if (!document.hidden && pendingTabSwitch && !isSubmitted) {
+            // User returned — show modal warning (Bootstrap modal will display in active tab)
+            console.log('User returned to tab, showing warning modal');
+            if (modalEl && typeof bootstrap !== 'undefined') {
+                const bsModal = new bootstrap.Modal(modalEl, {backdrop: 'static', keyboard: false});
+                bsModal.show();
+
+                // Countdown then auto-submit. Show countdown in modal
+                let countdown = 5;
+                const countdownEl = document.getElementById('tabWarningCountdown');
+                if (countdownEl) countdownEl.textContent = countdown;
+
+                const countdownInterval = setInterval(function() {
+                    countdown -= 1;
+                    if (countdownEl) countdownEl.textContent = countdown;
+                    if (countdown <= 0) {
+                        clearInterval(countdownInterval);
+                        try { bsModal.hide(); } catch(e){}
+                        isSubmitted = true;
+                        quizForm.submit();
+                    }
+                }, 1000);
+
+                // If user clicks Submit Now, submit immediately
+                const okBtn = document.getElementById('tabWarningOkBtn');
+                if (okBtn) {
+                    okBtn.onclick = function() {
+                        clearInterval(countdownInterval);
+                        try { bsModal.hide(); } catch(e){}
+                        isSubmitted = true;
+                        quizForm.submit();
+                    };
+                }
+            } else {
+                // If Bootstrap isn't available, fallback to alert on visible
+                alert('⚠️ WARNING! You switched tabs during the quiz. Your quiz will be submitted.');
+                isSubmitted = true;
+                quizForm.submit();
+            }
+            pendingTabSwitch = false;
+        }
+    });
+</script>
+
+{% endblock %}

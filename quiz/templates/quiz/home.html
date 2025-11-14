@@ -1,9 +1,10 @@
 {% extends 'quiz/base.html' %}
 
 {% block content %}
-<div class="text-center p-5 mb-4 bg-light rounded-3">
-    <h1 class="display-4 fw-bold">Welcome to QuizWhiz!</h1>
-    <p class="fs-4">Test your knowledge on various topics.</p>
+
+<div class="text-center hero-section">
+    <h1 class="display-4 fw-bold">🚀 Welcome to QuizWhiz!</h1>
+    <p class="fs-4">Challenge yourself and compete with others on various topics</p>
 </div>
 
 <div class="row">
@@ -12,11 +13,29 @@
         <div class="card h-100">
             <div class="card-body d-flex flex-column">
                 <h5 class="card-title">{{ quiz.title }}</h5>
-                <p class="card-text">Topic: {{ quiz.topic }}</p>
-                <a href="{% url 'quiz_detail' quiz.id %}" class="btn btn-primary mt-auto">Start Quiz</a>
+                <p class="card-text text-muted">Topic: {{ quiz.topic }}</p>
+                <div class="mb-3">
+                    <span class="badge bg-secondary">{{ quiz.difficulty }}</span>
+                    <span class="badge bg-info">{{ quiz.questions.count }} Questions</span>
+                </div>
+                <div class="d-grid gap-2 mt-auto">
+                    <a href="{% url 'quiz_detail' quiz.id %}" class="btn btn-primary">
+                        <i class="bi bi-play-fill me-1"></i>Take Quiz
+                    </a>
+                    {% if user.is_authenticated %}
+                    <a href="{% url 'find_match' quiz.id %}" class="btn btn-danger">
+                        <i class="bi bi-people-fill me-1"></i>Find Match
+                    </a>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
+    {% empty %}
+    <div class="col">
+        <p class="text-center text-muted">No quizzes available yet. Check back soon!</p>
+    </div>
     {% endfor %}
 </div>
+
 {% endblock %}

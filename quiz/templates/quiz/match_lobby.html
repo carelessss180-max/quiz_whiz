@@ -1,0 +1,64 @@
+{% extends 'quiz/base.html' %}
+
+{% block content %}
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-lg">
+                <div class="card-header bg-success text-white">
+                    <h2 class="mb-0"><i class="bi bi-controller me-2"></i>Match Found!</h2>
+                </div>
+                <div class="card-body p-5">
+                    <div class="alert alert-success" role="alert">
+                        <h5 class="alert-heading"><i class="bi bi-check-circle me-2"></i>Opponent Found!</h5>
+                        <p class="mb-0">You're ready to battle! Both players are here.</p>
+                    </div>
+
+                    <div class="mb-4">
+                        <h4 class="text-center">{{ quiz.title }}</h4>
+                        <p class="text-center text-muted">{{ quiz.topic }} - <span class="badge bg-info">{{ quiz.difficulty }}</span></p>
+                    </div>
+
+                    <div class="row mb-4">
+                        <div class="col-md-6 text-center border-end">
+                            <h5>You</h5>
+                            <p class="display-6"><i class="bi bi-person-circle"></i></p>
+                            <p class="text-muted">{{ request.user.username }}</p>
+                        </div>
+                        <div class="col-md-6 text-center">
+                            <h5>Opponent</h5>
+                            <p class="display-6"><i class="bi bi-person-circle"></i></p>
+                            <p class="text-muted">
+                                {% if is_player1 %}
+                                    {{ match.player2.username }}
+                                {% else %}
+                                    {{ match.player1.username }}
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <strong><i class="bi bi-lightning-fill me-2"></i>Quiz Details:</strong>
+                        <ul class="mb-0 mt-2">
+                            <li>{{ quiz.questions.count }} Questions</li>
+                            <li>Complete the quiz to compete</li>
+                            <li>Highest score wins!</li>
+                        </ul>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+                        <a href="{% url 'match_quiz' match.id %}" class="btn btn-success btn-lg">
+                            <i class="bi bi-play-fill me-2"></i>Start Quiz
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

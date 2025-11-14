@@ -1,0 +1,126 @@
+{% extends 'quiz/base.html' %}
+{% load static %}
+
+{% block content %}
+
+{% csrf_token %}
+
+<div class="container my-4">
+    <div style="background: linear-gradient(90deg, #f0f7ff 0%, #f9eef8 100%); padding: 2.5rem; border-radius: 12px; margin-bottom: 2rem;">
+        <h1 style="font-family: Poppins, sans-serif; font-weight: 800; font-size: 2.8rem; color: #0f172a; letter-spacing: -0.6px; margin: 0;">
+            🔔 My Notifications
+        </h1>
+    </div>
+
+    {% if unread_count > 0 %}
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <p class="text-muted">You have <strong>{{ unread_count }}</strong> unread notification(s)</p>
+            <button class="btn btn-sm btn-outline-primary" onclick="markAllAsRead()">
+                Mark all as read
+            </button>
+        </div>
+    {% endif %}
+
+    {% if notifications %}
+        <div class="list-group">
+            {% for notification in notifications %}
+                <div class="list-group-item list-group-item-action {% if not notification.is_read %}list-group-item-primary{% endif %}" 
+                     style="cursor: pointer;" 
+                     data-notification-id="{{ notification.id }}"
+                     data-quiz-url="{% if notification.quiz %}{% url 'quiz_detail' notification.quiz.id %}{% else %}#{% endif %}"
+                     onclick="handleNotificationClick(this)">
+                    <div class="d-flex w-100 justify-content-between">
+                        <div>
+                            <h6 class="mb-1">
+                                {% if notification.notification_type == 'new_quiz' %}
+                                    ✨ {{ notification.title }}
+                                {% elif notification.notification_type == 'badge_earned' %}
+                                    🏆 {{ notification.title }}
+                                {% elif notification.notification_type == 'challenge_received' %}
+                                    ⚔️ {{ notification.title }}
+                                {% else %}
+                                    📤 {{ notification.title }}
+                                {% endif %}
+                            </h6>
+                            <p class="mb-1 text-muted small">{{ notification.message }}</p>
+                        </div>
+                        <small class="text-muted">
+                            {{ notification.created_at|date:"M d, Y H:i" }}
+                        </small>
+                    </div>
+                    {% if not notification.is_read %}
+                        <span class="badge bg-primary position-absolute" style="top: 10px; right: 10px;">New</span>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="alert alert-info text-center">
+            <i class="bi bi-info-circle me-2"></i>
+            You don't have any notifications yet. Stay tuned for updates!
+        </div>
+    {% endif %}
+</div>
+
+<script>
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function handleNotificationClick(element) {
+    const notificationId = element.getAttribute('data-notification-id');
+    const redirectUrl = element.getAttribute('data-quiz-url');
+    
+    markAsRead(notificationId);
+    
+    if (redirectUrl && redirectUrl !== '#') {
+        setTimeout(() => {
+            window.location.href = redirectUrl;
+        }, 300);
+    }
+}
+
+function markAsRead(notificationId) {
+    const csrftoken = getCookie('csrftoken');
+    fetch(`/notifications/${notificationId}/read/`, {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': csrftoken,
+            'Content-Type': 'application/json',
+        }
+    }).then(response => response.json())
+      .catch(error => console.error('Error:', error));
+}
+
+function markAllAsRead() {
+    const csrftoken = getCookie('csrftoken');
+    fetch('/notifications/mark-all-read/', {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': csrftoken,
+            'Content-Type': 'application/json',
+        }
+    }).then(response => response.json())
+      .then(data => {
+          if (data.status === 'success') {
+              location.reload();
+          }
+      })
+      .catch(error => console.error('Error:', error));
+}
+</script>
+
+{% endblock %}

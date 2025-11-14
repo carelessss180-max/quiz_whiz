@@ -1,0 +1,247 @@
+{% extends 'quiz/base.html' %}
+
+{% block content %}
+
+<style>
+    .following-header {
+        background: linear-gradient(90deg, #f0f7ff 0%, #f9eef8 100%);
+        padding: 2.5rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+    }
+    .following-header h1 {
+        font-family: Poppins, sans-serif;
+        font-weight: 800;
+        font-size: 2.8rem;
+        color: #0f172a;
+        letter-spacing: -0.6px;
+        margin: 0;
+    }
+    .user-card {
+        background: white;
+        border: 1px solid #e9ecef;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    .user-card:hover {
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        transform: translateY(-2px);
+    }
+    .user-info {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        flex: 1;
+    }
+    .user-avatar {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.5rem;
+        flex-shrink: 0;
+        border: 3px solid white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .user-avatar img {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 3px solid white;
+    }
+    .user-details h3 {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #0f172a;
+    }
+    .user-details p {
+        margin: 0.25rem 0 0 0;
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+    .user-actions {
+        display: flex;
+        gap: 0.75rem;
+    }
+    .btn-follow, .btn-unfollow {
+        padding: 0.6rem 1.2rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        transition: all 0.3s ease;
+        border: none;
+        cursor: pointer;
+    }
+    .btn-follow {
+        background: #667eea;
+        color: white;
+    }
+    .btn-follow:hover {
+        background: #5568d3;
+        transform: scale(1.05);
+    }
+    .btn-unfollow {
+        background: #e9ecef;
+        color: #6c757d;
+    }
+    .btn-unfollow:hover {
+        background: #dee2e6;
+        color: #495057;
+    }
+    .btn-view-profile {
+        padding: 0.6rem 1.2rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        background: #f0f7ff;
+        color: #667eea;
+        border: 2px solid #667eea;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    .btn-view-profile:hover {
+        background: #667eea;
+        color: white;
+    }
+    .empty-state {
+        text-align: center;
+        padding: 3rem 1.5rem;
+        color: #6c757d;
+    }
+    .empty-state i {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+    @media (max-width: 768px) {
+        .user-card {
+            flex-direction: column;
+            text-align: center;
+        }
+        .user-info {
+            flex-direction: column;
+            width: 100%;
+        }
+        .user-actions {
+            width: 100%;
+            justify-content: center;
+        }
+    }
+</style>
+
+<div class="container my-4">
+    <div class="following-header">
+        <h1>👥 {{ page_title }}</h1>
+        <p class="text-muted mb-0 mt-2">
+            Total: <strong>{{ following|length }}</strong> user(s) being followed
+        </p>
+    </div>
+
+    {% if following %}
+        <div class="list-group">
+            {% for follow in following %}
+                <div class="user-card">
+                    <div class="user-info">
+                        <div class="user-avatar">
+                            {% if follow.following.profile.profile_photo %}
+                                <img src="{{ follow.following.profile.profile_photo.url }}" alt="{{ follow.following.username }}">
+                            {% else %}
+                                <i class="bi bi-person-fill"></i>
+                            {% endif %}
+                        </div>
+                        <div class="user-details">
+                            <h3>{{ follow.following.username|upper }}</h3>
+                            {% if follow.following.first_name or follow.following.last_name %}
+                                <p>{{ follow.following.first_name }} {{ follow.following.last_name }}</p>
+                            {% endif %}
+                            {% if follow.following.profile.bio %}
+                                <p>{{ follow.following.profile.bio }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="user-actions">
+                        <a href="{% url 'user_profile' follow.following.username %}" class="btn btn-view-profile">
+                            <i class="bi bi-eye me-1"></i>View Profile
+                        </a>
+                        {% if is_own_profile %}
+                            <!-- Only show unfollow button for own following list -->
+                            <button class="btn-unfollow" onclick="toggleFollowUser('{{ follow.following.username }}', this)">
+                                <i class="bi bi-person-check-fill me-1"></i>Unfollow
+                            </button>
+                        {% else %}
+                            <!-- Show follow/unfollow based on current user's status -->
+                            {% if follow.following.id in my_following_ids %}
+                                <button class="btn-unfollow" onclick="toggleFollowUser('{{ follow.following.username }}', this)">
+                                    <i class="bi bi-person-check-fill me-1"></i>Unfollow
+                                </button>
+                            {% else %}
+                                <button class="btn-follow" onclick="toggleFollowUser('{{ follow.following.username }}', this)">
+                                    <i class="bi bi-person-plus-fill me-1"></i>Follow
+                                </button>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <i class="bi bi-person-x"></i>
+            <h4>Not following anyone yet</h4>
+            <p>{{ viewed_user.username }} isn't following any users yet.</p>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+function toggleFollowUser(username, btn) {
+    fetch(`/profile/${username}/follow/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(resp => resp.json())
+    .then(data => {
+        if (data.status === 'followed') {
+            btn.classList.remove('btn-follow');
+            btn.classList.add('btn-unfollow');
+            btn.innerHTML = '<i class="bi bi-person-check-fill me-1"></i>Unfollow';
+        } else if (data.status === 'unfollowed') {
+            btn.classList.remove('btn-unfollow');
+            btn.classList.add('btn-follow');
+            btn.innerHTML = '<i class="bi bi-person-plus-fill me-1"></i>Follow';
+        }
+    });
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+
+{% endblock %}

@@ -1,152 +1,196 @@
 {% extends 'quiz/base.html' %}
 
 {% block content %}
-<h1 class="mb-4 text-center">{{ quiz.title }}</h1>
 
-<div id="quiz-container" class="card">
-    <div class="card-body">
-        <h3 id="question-text" class="card-title">Loading...</h3>
-        <div id="choices-container" class="my-4"></div>
+<div class="container">
+    <h2 class="text-center my-4">{{ quiz.title }}</h2>
+
+    <div id="quiz-container" class="card mb-3">
+        <div class="card-body">
+            <h4 id="question-text">Loading...</h4>
+            <div id="choices-container" class="mt-3"></div>
+        </div>
     </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>Time Left: <span id="timer" class="badge bg-danger">0</span>s</div>
+        <div class="text-muted">Question <span id="question-counter">1</span> / <span id="total-questions">?</span></div>
+    </div>
+
+    <form method="post" id="quiz-form" action="">
+        {% csrf_token %}
+    </form>
+
+    {{ questions_data|json_script:"questions-data" }}
+
+    <!-- Visibility modal -->
+    <div class="modal fade" id="visibilityWarningModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">QuizWhiz — Attention</h5>
+          </div>
+          <div class="modal-body">
+            <p class="mb-1">You left the quiz tab. This question will be skipped.</p>
+            <p class="small text-muted">Skipping in <span id="visibilityWarningCountdown">5</span>s</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="visibilityWarningOk">Skip Now</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
 </div>
-
-<div class="d-flex justify-content-between align-items-center mt-3">
-    <p class="h4">Time Left: <span id="timer" class="badge bg-danger">0</span>s</p>
-    <p class="h5 text-muted">Question <span id="question-counter">1</span> of <span id="total-questions">?</span></p>
-</div>
-
-<form method="post" id="quiz-form">
-    {% csrf_token %}
-</form>
-
-{{ questions_data|json_script:"questions-data" }}
 
 <script>
-    // Load the question data from the Django template
-    const questionsData = JSON.parse(document.getElementById('questions-data').textContent);
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const isAiChallenge = urlParams.get('challenge') === 'true';
+    const isH2hChallenge = urlParams.get('challenge_id');
     const quizForm = document.getElementById('quiz-form');
-    
-    // DOM Elements
+
+    if (isAiChallenge) quizForm.action = window.location.pathname + '?challenge=true';
+    else if (isH2hChallenge) quizForm.action = window.location.pathname + '?challenge_id=' + isH2hChallenge;
+
+    const questionsData = JSON.parse(document.getElementById('questions-data').textContent || '[]');
     const questionTextEl = document.getElementById('question-text');
     const choicesContainerEl = document.getElementById('choices-container');
     const timerEl = document.getElementById('timer');
     const questionCounterEl = document.getElementById('question-counter');
     const totalQuestionsEl = document.getElementById('total-questions');
-    
-    // Quiz state
-    let quizState = {
-        currentQuestionIndex: 0,
-        timeLeft: 0,
-        answers: {}
-    };
+
+    let quizState = { currentQuestionIndex: 0, answers: {} };
     let timerInterval = null;
     const storageKey = `quizState_{{ quiz.id }}`;
     let isQuizActive = true;
 
-    totalQuestionsEl.textContent = questionsData.length;
-
-    function handleVisibilityChange() {
-        if (document.visibilityState === 'hidden' && isQuizActive) {
-            alert("You have left the quiz tab. This question will be skipped.");
-            nextQuestion();
-        }
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    function saveQuizState() {
-        quizState.timeLeft = timerEl.textContent;
-        sessionStorage.setItem(storageKey, JSON.stringify(quizState));
-    }
+    totalQuestionsEl.textContent = questionsData.length || 0;
 
     function loadQuizState() {
-        const savedState = sessionStorage.getItem(storageKey);
-        if (savedState) {
-            quizState = JSON.parse(savedState);
-            for (const [questionId, choiceId] of Object.entries(quizState.answers)) {
-                createHiddenInput(questionId, choiceId);
+        const saved = sessionStorage.getItem(storageKey);
+        if (saved) {
+            quizState = JSON.parse(saved);
+            for (const [qid, cid] of Object.entries(quizState.answers || {})) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = `question_${qid}`;
+                input.value = cid;
+                quizForm.appendChild(input);
             }
-            // UPDATED: Pass the saved time only when the page first loads
             displayQuestion(quizState.currentQuestionIndex, quizState.timeLeft);
         } else {
-            // Start a fresh quiz
             displayQuestion(0);
         }
     }
 
-    // --- UPDATED FUNCTION LOGIC ---
     function displayQuestion(index, resumeTime = null) {
         clearInterval(timerInterval);
-        
         if (index >= questionsData.length) {
             submitQuiz();
             return;
         }
-
         quizState.currentQuestionIndex = index;
-        const question = questionsData[index];
-        questionTextEl.textContent = question.text;
+        const q = questionsData[index];
+        questionTextEl.textContent = q.text;
         questionCounterEl.textContent = index + 1;
         choicesContainerEl.innerHTML = '';
 
-        question.choices.forEach(choice => {
-            const choiceButton = document.createElement('button');
-            choiceButton.textContent = choice.text;
-            choiceButton.className = 'btn btn-outline-primary btn-lg d-block w-100 mb-2';
-            choiceButton.onclick = () => selectAnswer(question.id, choice.id);
-            choicesContainerEl.appendChild(choiceButton);
+        q.choices.forEach(c => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-outline-primary d-block w-100 mb-2';
+            btn.textContent = c.text;
+            btn.onclick = () => selectAnswer(q.id, c.id);
+            choicesContainerEl.appendChild(btn);
         });
-        
-        // This new logic ensures a fresh timer unless explicitly resuming from a page load
-        const startTime = (resumeTime !== null && resumeTime > 0) ? resumeTime : question.time_limit;
-        startTimer(startTime);
+
+        const start = (resumeTime && resumeTime > 0) ? resumeTime : q.time_limit || 30;
+        startTimer(start);
     }
 
     function startTimer(duration) {
-        let timeLeft = parseInt(duration);
-        timerEl.textContent = timeLeft;
+        let t = parseInt(duration);
+        if (isNaN(t)) t = 30;
+        timerEl.textContent = t;
         timerInterval = setInterval(() => {
-            timeLeft--;
-            timerEl.textContent = timeLeft;
-            saveQuizState();
-            
-            if (timeLeft <= 0) {
+            t--;
+            timerEl.textContent = t;
+            quizState.timeLeft = t;
+            sessionStorage.setItem(storageKey, JSON.stringify(quizState));
+            if (t <= 0) {
                 clearInterval(timerInterval);
                 nextQuestion();
             }
         }, 1000);
     }
-    
-    function createHiddenInput(questionId, choiceId) {
+
+    function createHiddenInput(qid, cid) {
         const input = document.createElement('input');
         input.type = 'hidden';
-        input.name = `question_${questionId}`;
-        input.value = choiceId;
+        input.name = `question_${qid}`;
+        input.value = cid;
         quizForm.appendChild(input);
     }
 
-    function selectAnswer(questionId, choiceId) {
-        createHiddenInput(questionId, choiceId);
-        quizState.answers[questionId] = choiceId;
+    function selectAnswer(qid, cid) {
+        createHiddenInput(qid, cid);
+        quizState.answers[qid] = cid;
+        saveState();
         nextQuestion();
     }
 
     function nextQuestion() {
         quizState.currentQuestionIndex++;
-        // No need to manage timeLeft here; displayQuestion now handles it
-        saveQuizState();
-        displayQuestion(quizState.currentQuestionIndex); // Call without resumeTime to force a reset
+        saveState();
+        displayQuestion(quizState.currentQuestionIndex);
     }
 
     function submitQuiz() {
-        if (!isQuizActive) return; 
+        if (!isQuizActive) return;
         isQuizActive = false;
         sessionStorage.removeItem(storageKey);
         questionTextEl.textContent = "Quiz Finished! Submitting your answers...";
         choicesContainerEl.innerHTML = '<div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div>';
         timerEl.textContent = '0';
-        quizForm.submit();
+        document.getElementById('quiz-form').submit();
     }
 
+    function saveState() {
+        sessionStorage.setItem(storageKey, JSON.stringify(quizState));
+    }
+
+    // Visibility handling: show modal when hidden and auto-skip after 5s
+    function handleVisibilityChange() {
+        if (document.visibilityState === 'hidden' && isQuizActive) {
+            const visModal = new bootstrap.Modal(document.getElementById('visibilityWarningModal'), {
+                backdrop: 'static',
+                keyboard: false
+            });
+            visModal.show();
+            let count = 5;
+            const el = document.getElementById('visibilityWarningCountdown');
+            if (el) el.textContent = count;
+            const interval = setInterval(() => {
+                count--;
+                if (el) el.textContent = count;
+                if (count <= 0) {
+                    clearInterval(interval);
+                    visModal.hide();
+                    nextQuestion();
+                }
+            }, 1000);
+            document.getElementById('visibilityWarningOk').onclick = function() {
+                clearInterval(interval);
+                visModal.hide();
+                nextQuestion();
+            };
+        }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     loadQuizState();
+});
 </script>
+
 {% endblock %}

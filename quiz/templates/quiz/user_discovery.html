@@ -1,0 +1,202 @@
+{% extends 'quiz/base.html' %}
+
+{% block content %}
+
+<style>
+    .discovery-header {
+        background: linear-gradient(90deg, #f0f7ff 0%, #f9eef8 100%);
+        padding: 2.5rem 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 2.5rem;
+        box-shadow: 0 10px 26px rgba(50, 50, 93, 0.05);
+        text-align: center;
+    }
+    .discovery-header h1 { font-size: 2.8rem; font-weight: 800; color: #0f172a; margin-bottom: 0.5rem; }
+    .discovery-header p { color: #4b5563; font-size: 1.05rem; margin: 0; }
+    .user-card {
+        background: white;
+        border-radius: 10px;
+        padding: 2rem;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        transition: all 0.3s ease;
+        border: 2px solid transparent;
+        height: 100%;
+    }
+    .user-card:hover {
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        border-color: #667eea;
+        transform: translateY(-5px);
+    }
+    .user-avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        color: white;
+        margin: 0 auto 1rem;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    }
+    .user-name {
+        font-size: 1.1rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        color: #333;
+    }
+    .user-stats {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+        margin: 1rem 0;
+    }
+    .stat-small {
+        background: #f8f9fa;
+        padding: 0.75rem;
+        border-radius: 8px;
+    }
+    .stat-label-small {
+        font-size: 0.75rem;
+        color: #6c757d;
+        text-transform: uppercase;
+        font-weight: 600;
+    }
+    .stat-value-small {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #667eea;
+        margin-top: 0.25rem;
+    }
+    .follow-btn-card {
+        width: 100%;
+        margin-top: 1rem;
+    }
+    .empty-state {
+        text-align: center;
+        padding: 3rem 1rem;
+    }
+</style>
+
+<div class="container mt-5 mb-5">
+    <!-- Header -->
+    <div class="discovery-header">
+        <h1 class="mb-2">
+            <i class="bi bi-people-fill me-2"></i>Discover Users
+        </h1>
+        <p class="mb-0 opacity-75">Explore top performers and follow other quiz enthusiasts</p>
+    </div>
+
+    <!-- User Cards Grid -->
+    {% if top_users %}
+    <div class="row g-4">
+        {% for user in top_users %}
+        <div class="col-md-6 col-lg-4">
+            <div class="user-card">
+                <!-- Avatar -->
+                <div class="user-avatar">
+                    {% if user.profile.profile_photo %}
+                        <img src="{{ user.profile.profile_photo.url }}" alt="{{ user.username }}" style="width: 100%; height: 100%; object-fit: cover;">
+                    {% else %}
+                        <i class="bi bi-person-fill"></i>
+                    {% endif %}
+                </div>
+
+                <!-- Name -->
+                <div class="user-name">
+                    <a href="{% url 'user_profile' user.username %}" style="text-decoration: none; color: inherit;">
+                        {{ user.username }}
+                    </a>
+                </div>
+
+                <!-- Bio (if available) -->
+                {% if user.profile.bio %}
+                <p class="text-muted small mb-2" style="font-style: italic;">{{ user.profile.bio|truncatewords:15 }}</p>
+                {% endif %}
+
+                <!-- Stats -->
+                <div class="user-stats">
+                    <div class="stat-small">
+                        <div class="stat-label-small">Quizzes</div>
+                        <div class="stat-value-small">{{ user.quiz_count }}</div>
+                    </div>
+                    <div class="stat-small">
+                        <div class="stat-label-small">Badges</div>
+                        <div class="stat-value-small">{{ user.badge_count }}</div>
+                    </div>
+                </div>
+
+                <!-- Follow Button -->
+                {% if user.is_authenticated and user.username != request.user.username %}
+                <button class="btn btn-primary follow-btn-card" 
+                        onclick="toggleFollowDiscovery('{{ user.username }}', this)">
+                    <i class="bi bi-person-plus-fill me-1"></i>Follow
+                </button>
+                {% endif %}
+
+                <!-- View Profile Link -->
+                <a href="{% url 'user_profile' user.username %}" class="btn btn-outline-primary follow-btn-card">
+                    <i class="bi bi-arrow-right me-1"></i>View Profile
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
+        <h3 class="mt-3 text-muted">No Users Found</h3>
+        <p class="text-muted">Start attempting quizzes to appear on the leaderboard!</p>
+    </div>
+    {% endif %}
+
+    <!-- Back to Home Button -->
+    <div class="text-center mt-5 mb-4">
+        <a href="{% url 'home' %}" class="btn btn-primary btn-lg"><i class="bi bi-house-door-fill me-2"></i>Back to Home</a>
+    </div>
+</div>
+
+<script>
+function toggleFollowDiscovery(username, btn) {
+    fetch(`/profile/${username}/follow/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(resp => resp.json())
+    .then(data => {
+        if (data.status === 'followed') {
+            btn.classList.remove('btn-outline-primary');
+            btn.classList.add('btn-success');
+            btn.innerHTML = '<i class="bi bi-person-check-fill me-1"></i>Following';
+            btn.disabled = false;
+        } else {
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-primary');
+            btn.innerHTML = '<i class="bi bi-person-plus-fill me-1"></i>Follow';
+            btn.disabled = false;
+        }
+    });
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+
+{% endblock %}

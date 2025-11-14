@@ -1,0 +1,264 @@
+{% extends 'quiz/base.html' %}
+
+{% block content %}
+
+<style>
+    .edit-profile-container {
+        max-width: 700px;
+        margin: 3rem auto;
+    }
+    .edit-card {
+        background: white;
+        border-radius: 15px;
+        padding: 2rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    .form-section {
+        margin-bottom: 2rem;
+        padding-bottom: 2rem;
+        border-bottom: 1px solid #e9ecef;
+    }
+    .form-section:last-child {
+        border-bottom: none;
+    }
+    .form-section h5 {
+        font-weight: 700;
+        margin-bottom: 1.5rem;
+        color: #333;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    .form-section i {
+        color: #667eea;
+        font-size: 1.25rem;
+    }
+    .photo-preview {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        background: #f8f9fa;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 1rem 0;
+        border: 3px solid #667eea;
+        overflow: hidden;
+    }
+    .photo-preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .photo-preview.empty {
+        font-size: 2rem;
+        color: #ccc;
+    }
+    .form-control:focus,
+    .form-control-file:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+    }
+    .btn-group-edit {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+    }
+    .btn-group-edit .btn {
+        flex: 1;
+        padding: 0.75rem;
+        font-weight: 600;
+        border-radius: 8px;
+    }
+    .char-count {
+        font-size: 0.85rem;
+        color: #6c757d;
+        margin-top: 0.25rem;
+    }
+    .char-count.warning {
+        color: #ff9800;
+    }
+    .char-count.danger {
+        color: #f44336;
+    }
+</style>
+
+<div class="edit-profile-container">
+    <h1 class="text-center mb-4">
+        <i class="bi bi-pencil-square me-2"></i>Edit Your Profile
+    </h1>
+
+    <div class="edit-card">
+        <form method="POST" enctype="multipart/form-data">
+            {% csrf_token %}
+
+            <!-- Basic Information Section -->
+            <div class="form-section">
+                <h5>
+                    <i class="bi bi-person"></i>Basic Information
+                </h5>
+
+                <div class="mb-3">
+                    <label for="{{ user_form.first_name.id_for_label }}" class="form-label fw-600">
+                        First Name
+                    </label>
+                    {{ user_form.first_name }}
+                    {% if user_form.first_name.errors %}
+                    <div class="text-danger mt-2">
+                        {{ user_form.first_name.errors }}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <label for="{{ user_form.last_name.id_for_label }}" class="form-label fw-600">
+                        Last Name
+                    </label>
+                    {{ user_form.last_name }}
+                    {% if user_form.last_name.errors %}
+                    <div class="text-danger mt-2">
+                        {{ user_form.last_name.errors }}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <label for="{{ user_form.email.id_for_label }}" class="form-label fw-600">
+                        Email Address
+                    </label>
+                    {{ user_form.email }}
+                    {% if user_form.email.errors %}
+                    <div class="text-danger mt-2">
+                        {{ user_form.email.errors }}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Profile Photo Section -->
+            <div class="form-section">
+                <h5>
+                    <i class="bi bi-image"></i>Profile Photo
+                </h5>
+
+                <!-- Current Photo Preview -->
+                {% if profile_form.instance.profile_photo %}
+                <div class="mb-3">
+                    <p class="text-muted small mb-2">Current Photo:</p>
+                    <div class="photo-preview">
+                        <img src="{{ profile_form.instance.profile_photo.url }}" alt="Current profile">
+                    </div>
+                </div>
+                {% else %}
+                <div class="mb-3">
+                    <div class="photo-preview empty">
+                        <i class="bi bi-person-fill"></i>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Photo Upload -->
+                <div class="mb-3">
+                    <label for="{{ profile_form.profile_photo.id_for_label }}" class="form-label fw-600">
+                        Upload New Photo
+                    </label>
+                    <div class="input-group">
+                        <input type="file" class="form-control" id="{{ profile_form.profile_photo.id_for_label }}" name="profile_photo" accept="image/*">
+                        <span class="input-group-text">
+                            <i class="bi bi-cloud-upload"></i>
+                        </span>
+                    </div>
+                    <small class="text-muted d-block mt-2">
+                        <i class="bi bi-info-circle me-1"></i>Supported formats: JPG, PNG, GIF (Max 5MB recommended)
+                    </small>
+                    {% if profile_form.profile_photo.errors %}
+                    <div class="text-danger mt-2">
+                        {{ profile_form.profile_photo.errors }}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Bio Section -->
+            <div class="form-section">
+                <h5>
+                    <i class="bi bi-chat-left-text"></i>Bio
+                </h5>
+
+                <div class="mb-3">
+                    <label for="{{ profile_form.bio.id_for_label }}" class="form-label fw-600">
+                        About You
+                    </label>
+                    {{ profile_form.bio }}
+                    <div class="char-count" id="bio-counter">
+                        <span id="bio-count">0</span>/500 characters
+                    </div>
+                    <small class="text-muted d-block mt-1">
+                        <i class="bi bi-pencil-square me-1"></i>Tell other users about yourself!
+                    </small>
+                    {% if profile_form.bio.errors %}
+                    <div class="text-danger mt-2">
+                        {{ profile_form.bio.errors }}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="btn-group-edit">
+                <a href="{% url 'user_profile' user.username %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-x-circle me-2"></i>Cancel
+                </a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-circle me-2"></i>Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// Character counter for bio
+const bioField = document.getElementById('{{ profile_form.bio.id_for_label }}');
+const bioCounter = document.getElementById('bio-count');
+const bioCounterContainer = document.getElementById('bio-counter');
+
+if (bioField) {
+    function updateCounter() {
+        const length = bioField.value.length;
+        bioCounter.textContent = length;
+        
+        bioCounterContainer.classList.remove('warning', 'danger');
+        if (length > 400) {
+            bioCounterContainer.classList.add('danger');
+        } else if (length > 300) {
+            bioCounterContainer.classList.add('warning');
+        }
+    }
+    
+    bioField.addEventListener('input', updateCounter);
+    updateCounter(); // Initialize on load
+}
+
+// Photo preview
+const photoInput = document.getElementById('{{ profile_form.profile_photo.id_for_label }}');
+if (photoInput) {
+    photoInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                let preview = document.querySelector('.photo-preview');
+                if (preview.classList.contains('empty')) {
+                    preview.classList.remove('empty');
+                    preview.innerHTML = '';
+                }
+                preview.innerHTML = `<img src="${event.target.result}" alt="Preview">`;
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+}
+</script>
+
+{% endblock %}
