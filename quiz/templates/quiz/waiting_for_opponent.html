@@ -45,11 +45,52 @@
     </div>
 </div>
 
+{% block extra_js %}
 <script>
-// Auto-refresh every 2 seconds to check if opponent found
-setInterval(function() {
-    location.reload();
-}, 2000);
+const apiFindUrl = "{% url 'api_find_match' quiz.id %}";
+let matchId = "{{ match.id }}";
+let pollAttempts = 0;
+
+async function attemptFindMatch() {
+    pollAttempts++;
+    try {
+        console.log(`[AJAX #${pollAttempts}] Calling ${apiFindUrl}...`);
+        const resp = await fetch(apiFindUrl, { credentials: 'same-origin' });
+        if (!resp.ok) {
+            console.error('[AJAX] HTTP error:', resp.status);
+            return;
+        }
+        const data = await resp.json();
+        console.log(`[AJAX #${pollAttempts}] Response:`, data);
+        
+        if (data.status === 'matched') {
+            console.log('[AJAX] ✓✓✓ MATCHED! Redirecting to lobby...');
+            clearInterval(pollId);
+            window.location.href = data.match_lobby_url;
+        } else if (data.status === 'waiting') {
+            matchId = data.match_id;
+            document.getElementById('match-id').textContent = matchId;
+            console.log(`[AJAX #${pollAttempts}] Still waiting for opponent... (match_id=${matchId})`);
+        }
+    } catch (e) {
+        console.error(`[AJAX #${pollAttempts}] Error:`, e);
+    }
+}
+
+// Attempt immediately on page load
+console.log('[Page Init] Starting auto-match polling...');
+attemptFindMatch();
+
+// Then poll every 800ms
+const pollId = setInterval(attemptFindMatch, 800);
+
+// Safeguard: stop polling after 5 minutes (300 attempts at 800ms)
+setTimeout(() => {
+    clearInterval(pollId);
+    console.warn('[AJAX] Polling timeout - 5 minutes reached');
+}, 300000);
+
 </script>
+{% endblock %}
 
 {% endblock %}

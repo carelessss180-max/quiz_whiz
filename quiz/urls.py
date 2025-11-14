@@ -6,6 +6,8 @@ urlpatterns = [
     path('latest/', views.latest_quizzes, name='latest_quizzes'),
     path('stats/', views.quiz_stats, name='quiz_stats'),
     path('signup/', views.signup_view, name='signup'),
+    path('verify-otp/', views.verify_otp, name='verify_otp'),
+    path('resend-otp/', views.resend_otp, name='resend_otp'),
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
     path('dashboard/', views.dashboard, name='dashboard'),
@@ -28,7 +30,9 @@ urlpatterns = [
     
     # Auto-Matchmaking URLs
     path('find-match/<int:quiz_id>/', views.find_match, name='find_match'),
+    path('api/find-match/<int:quiz_id>/', views.api_find_match, name='api_find_match'),
     path('waiting/<uuid:match_id>/', views.waiting_for_opponent, name='waiting_for_opponent'),
+    path('api/check-match/<uuid:match_id>/', views.api_check_match, name='api_check_match'),
     path('match/<uuid:match_id>/lobby/', views.match_lobby, name='match_lobby'),
     path('match/<uuid:match_id>/quiz/', views.match_quiz, name='match_quiz'),
     path('match/<uuid:match_id>/result/', views.match_result, name='match_result'),

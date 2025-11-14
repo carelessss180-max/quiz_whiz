@@ -10,6 +10,7 @@ from .forms import UserProfileForm, UserBasicForm
 from django.db.models import Q, Count, Avg, F
 from django.http import HttpResponseForbidden, JsonResponse, FileResponse
 from django.utils import timezone
+from django.db import transaction
 from datetime import timedelta
 from io import BytesIO
 from reportlab.lib.pagesizes import letter, A4
@@ -32,14 +33,206 @@ def latest_quizzes(request):
 # Sign up view
 def signup_view(request):
     if request.method == 'POST':
-        form = UserCreationForm(request.POST)
-        if form.is_valid():
-            user = form.save()
-            login(request, user)
-            return redirect('home')
+        from .forms import SignupForm
+        form = SignupForm(request.POST)
+        print(f"[SIGNUP] Form submitted. Is valid: {form.is_valid()}")
+        if not form.is_valid():
+            print(f"[SIGNUP] Form errors: {form.errors}")
+            # Still render with errors shown
+            return render(request, 'quiz/signup.html', {'form': form})
+        
+        email = form.cleaned_data['email']
+        username = form.cleaned_data['username']
+        password = form.cleaned_data['password1']
+        print(f"[SIGNUP] Processing signup for email: {email}, username: {username}")
+        
+        # Create OTP and send email
+        from .models import EmailOTP
+        from django.core.mail import send_mail
+        
+        otp_obj = EmailOTP.create_otp(email)
+        print(f"[SIGNUP] OTP created: {otp_obj.otp}")
+        
+        # Try to send OTP email
+        try:
+            from django.core.mail import EmailMultiAlternatives
+            
+            html_message = f"""
+            <html>
+                <body style="font-family: Arial, sans-serif; background-color: #f5f5f5; padding: 20px;">
+                    <div style="max-width: 600px; margin: 0 auto; background-color: white; border-radius: 8px; padding: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <h2 style="color: #333; margin-bottom: 20px;">Welcome to QuizWhiz! 🎉</h2>
+                        
+                        <p style="color: #666; font-size: 16px; line-height: 1.6;">
+                            We're excited to have you join our community. To complete your signup, please use the OTP below:
+                        </p>
+                        
+                        <div style="background-color: #f0f0f0; border-left: 4px solid #007bff; padding: 20px; margin: 25px 0; border-radius: 4px;">
+                            <p style="margin: 0; color: #666; font-size: 14px; margin-bottom: 10px;">Your One-Time Password (OTP):</p>
+                            <p style="margin: 0; font-size: 32px; font-weight: bold; color: #007bff; letter-spacing: 3px; font-family: 'Courier New', monospace;">
+                                {otp_obj.otp}
+                            </p>
+                        </div>
+                        
+                        <p style="color: #999; font-size: 13px; margin: 20px 0;">
+                            ⏰ This OTP is valid for <strong>10 minutes</strong>. If you didn't request this, please ignore this email.
+                        </p>
+                        
+                        <hr style="border: none; border-top: 1px solid #eee; margin: 25px 0;">
+                        
+                        <p style="color: #999; font-size: 12px; text-align: center; margin: 0;">
+                            QuizWhiz - Test Your Knowledge<br>
+                            © 2024 All rights reserved
+                        </p>
+                    </div>
+                </body>
+            </html>
+            """
+            
+            subject = 'QuizWhiz - Email Verification OTP'
+            text_message = f'Your OTP for QuizWhiz signup is: {otp_obj.otp}\n\nThis OTP is valid for 10 minutes.'
+            
+            msg = EmailMultiAlternatives(
+                subject=subject,
+                body=text_message,
+                from_email='noreply@quizwhiz.com',
+                to=[email]
+            )
+            msg.attach_alternative(html_message, "text/html")
+            msg.send(fail_silently=False)
+            
+            print(f"[EMAIL] OTP sent to {email}: {otp_obj.otp}")
+        except Exception as e:
+            print(f"[EMAIL ERROR] Failed to send OTP to {email}: {e}")
+        
+        # Store signup data in session and redirect to OTP verification
+        request.session['signup_username'] = username
+        request.session['signup_email'] = email
+        request.session['signup_password'] = password
+        print(f"[SIGNUP] Session data stored, redirecting to verify_otp")
+        
+        return redirect('verify_otp')
     else:
-        form = UserCreationForm()
+        from .forms import SignupForm
+        form = SignupForm()
     return render(request, 'quiz/signup.html', {'form': form})
+
+
+def verify_otp(request):
+    """Verify OTP and create user account"""
+    email = request.session.get('signup_email')
+    username = request.session.get('signup_username')
+    password = request.session.get('signup_password')
+    
+    if not email or not username:
+        return redirect('signup')
+    
+    if request.method == 'POST':
+        otp_code = request.POST.get('otp', '').strip()
+        
+        from .models import EmailOTP
+        try:
+            otp_obj = EmailOTP.objects.get(email=email)
+            is_valid, message = otp_obj.verify_otp(otp_code)
+            
+            if is_valid:
+                # Create user account
+                user = User.objects.create_user(
+                    username=username,
+                    email=email,
+                    password=password
+                )
+                # Create user profile
+                from .models import UserProfile
+                UserProfile.objects.create(user=user)
+                
+                # Clear session data
+                del request.session['signup_username']
+                del request.session['signup_email']
+                del request.session['signup_password']
+                
+                # Log user in
+                login(request, user)
+                return redirect('home')
+            else:
+                return render(request, 'quiz/verify_otp.html', {
+                    'email': email,
+                    'error': message
+                })
+        except EmailOTP.DoesNotExist:
+            return render(request, 'quiz/verify_otp.html', {
+                'email': email,
+                'error': 'OTP not found. Please sign up again.'
+            })
+    
+    return render(request, 'quiz/verify_otp.html', {'email': email})
+
+
+def resend_otp(request):
+    """Resend OTP to user email"""
+    email = request.session.get('signup_email')
+    
+    if not email:
+        return redirect('signup')
+    
+    from .models import EmailOTP
+    from django.core.mail import send_mail
+    
+    otp_obj = EmailOTP.create_otp(email)
+    
+    try:
+        from django.core.mail import EmailMultiAlternatives
+        
+        html_message = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; background-color: #f5f5f5; padding: 20px;">
+                <div style="max-width: 600px; margin: 0 auto; background-color: white; border-radius: 8px; padding: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <h2 style="color: #333; margin-bottom: 20px;">Your New OTP 🔐</h2>
+                    
+                    <p style="color: #666; font-size: 16px; line-height: 1.6;">
+                        Here's your new One-Time Password (OTP) for QuizWhiz signup verification:
+                    </p>
+                    
+                    <div style="background-color: #f0f0f0; border-left: 4px solid #28a745; padding: 20px; margin: 25px 0; border-radius: 4px;">
+                        <p style="margin: 0; color: #666; font-size: 14px; margin-bottom: 10px;">Your New OTP:</p>
+                        <p style="margin: 0; font-size: 32px; font-weight: bold; color: #28a745; letter-spacing: 3px; font-family: 'Courier New', monospace;">
+                            {otp_obj.otp}
+                        </p>
+                    </div>
+                    
+                    <p style="color: #999; font-size: 13px; margin: 20px 0;">
+                        ⏰ This OTP is valid for <strong>10 minutes</strong>.
+                    </p>
+                    
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 25px 0;">
+                    
+                    <p style="color: #999; font-size: 12px; text-align: center; margin: 0;">
+                        QuizWhiz - Test Your Knowledge<br>
+                        © 2024 All rights reserved
+                    </p>
+                </div>
+            </body>
+        </html>
+        """
+        
+        subject = 'QuizWhiz - Email Verification OTP (Resent)'
+        text_message = f'Your new OTP for QuizWhiz signup is: {otp_obj.otp}\n\nThis OTP is valid for 10 minutes.'
+        
+        msg = EmailMultiAlternatives(
+            subject=subject,
+            body=text_message,
+            from_email='noreply@quizwhiz.com',
+            to=[email]
+        )
+        msg.attach_alternative(html_message, "text/html")
+        msg.send(fail_silently=False)
+        
+        print(f"[EMAIL] OTP resent to {email}: {otp_obj.otp}")
+    except Exception as e:
+        print(f"[EMAIL ERROR] Failed to resend OTP to {email}: {e}")
+    
+    return redirect('verify_otp')
+
 
 # Login view
 def login_view(request):
@@ -474,7 +667,6 @@ def my_challenges(request):
 @login_required
 def find_match(request, quiz_id):
     """Find or create a match for auto-matchmaking - only pairs online users"""
-    from datetime import timedelta
     quiz = get_object_or_404(Quiz, pk=quiz_id)
     
     # Check if user already has a waiting match for this quiz
@@ -489,68 +681,47 @@ def find_match(request, quiz_id):
             return redirect('match_lobby', match_id=existing_match.id)
         return redirect('waiting_for_opponent', match_id=existing_match.id)
     
-    # Only look for recent matches (less than 5 minutes old)
-    five_minutes_ago = timezone.now() - timedelta(minutes=5)
-    
-    # Look for a waiting match where player1 is verified online
-    waiting_matches = Matchmaking.objects.filter(
-        quiz=quiz,
-        player2__isnull=True,
-        status='waiting',
-        created_at__gte=five_minutes_ago
-    ).exclude(player1=request.user).order_by('created_at')
+    # Use transaction with select_for_update for safe, serialized access
+    with transaction.atomic():
+        five_minutes_ago = timezone.now() - timedelta(minutes=5)
+        
+        # Lock all waiting matches for this quiz
+        waiting_matches = Matchmaking.objects.select_for_update().filter(
+            quiz=quiz,
+            player2__isnull=True,
+            status='waiting',
+            created_at__gte=five_minutes_ago
+        ).exclude(player1=request.user).order_by('created_at')
 
-    from .models import UserProfile
-    # Debugging helpers: log match finding steps to Django logger
-    import logging
-    logger = logging.getLogger(__name__)
-    logger.debug(f"find_match called by user={request.user.username} for quiz={quiz.id}")
-    print(f"[DEBUG] find_match called by user={request.user.username} for quiz={quiz.id}")
-    for waiting_match in waiting_matches:
-        logger.debug(f"considering waiting_match id={waiting_match.id} player1={waiting_match.player1.username} created_at={waiting_match.created_at}")
-        print(f"[DEBUG] considering waiting_match id={waiting_match.id} player1={waiting_match.player1.username} created_at={waiting_match.created_at}")
-        try:
-            player1_profile = UserProfile.objects.get(user=waiting_match.player1)
-        except UserProfile.DoesNotExist:
-            # No profile found, delete stale match and continue
-            logger.debug(f"deleting waiting_match id={waiting_match.id} because player1 profile missing")
-            print(f"[DEBUG] deleting waiting_match id={waiting_match.id} because player1 profile missing")
-            waiting_match.delete()
-            continue
+        from .models import UserProfile
+        for waiting_match in waiting_matches:
+            try:
+                player1_profile = UserProfile.objects.get(user=waiting_match.player1)
+            except UserProfile.DoesNotExist:
+                waiting_match.delete()
+                continue
 
-        # If player1 appears offline, remove stale match
-        if (timezone.now() - player1_profile.last_activity) >= timedelta(minutes=5):
-            logger.debug(f"deleting waiting_match id={waiting_match.id} because player1 appears offline (last_activity={player1_profile.last_activity})")
-            print(f"[DEBUG] deleting waiting_match id={waiting_match.id} because player1 appears offline (last_activity={player1_profile.last_activity})")
-            waiting_match.delete()
-            continue
+            if (timezone.now() - player1_profile.last_activity) >= timedelta(minutes=5):
+                waiting_match.delete()
+                continue
 
-        # Attempt an atomic conditional update to claim player2
-        updated = Matchmaking.objects.filter(pk=waiting_match.pk, player2__isnull=True).update(
-            player2=request.user,
-            status='in_progress'
-        )
-
-        if updated:
-            logger.debug(f"user={request.user.username} successfully claimed match id={waiting_match.id}")
+            # Claim the match (within transaction, so safe)
+            waiting_match.player2 = request.user
+            waiting_match.status = 'in_progress'
+            waiting_match.save()
+            
             print(f"[DEBUG] user={request.user.username} successfully claimed match id={waiting_match.id}")
-            # Successfully claimed the match
             return redirect('match_lobby', match_id=waiting_match.id)
 
-        logger.debug(f"user={request.user.username} failed to claim match id={waiting_match.id}; it was claimed concurrently")
-        print(f"[DEBUG] user={request.user.username} failed to claim match id={waiting_match.id}; it was claimed concurrently")
+        # No suitable waiting match - create new one
+        new_match = Matchmaking.objects.create(
+            quiz=quiz,
+            player1=request.user,
+            status='waiting'
+        )
+        print(f"[DEBUG] created new waiting match id={new_match.id} for user={request.user.username}")
+        return redirect('waiting_for_opponent', match_id=new_match.id)
 
-        # If updated == 0 someone else claimed it concurrently; try next
-
-    # No suitable waiting match found (or all were claimed/stale) - create new match
-    new_match = Matchmaking.objects.create(
-        quiz=quiz,
-        player1=request.user,
-        status='waiting'
-    )
-    logger.debug(f"created new waiting match id={new_match.id} for user={request.user.username}")
-    print(f"[DEBUG] created new waiting match id={new_match.id} for user={request.user.username}")
-    return redirect('waiting_for_opponent', match_id=new_match.id)
 
 
 @login_required
@@ -562,7 +733,7 @@ def waiting_for_opponent(request, match_id):
     if request.user not in [match.player1, match.player2]:
         return HttpResponseForbidden("You are not part of this match.")
     
-    # Check if opponent has joined
+    # If match progressed, send user to lobby
     if match.player2 and match.status == 'in_progress':
         return redirect('match_lobby', match_id=match.id)
     
@@ -571,6 +742,100 @@ def waiting_for_opponent(request, match_id):
         'quiz': match.quiz
     }
     return render(request, 'quiz/waiting_for_opponent.html', context)
+
+
+@login_required
+def api_find_match(request, quiz_id):
+    """JSON endpoint to find or create a match for auto-matchmaking (used by AJAX).
+    
+    Strategy: Lock the entire quiz's matchmaking records, check for waiting matches,
+    and either claim one or create new one. Use get_or_create with careful logic.
+    """
+    import time
+    req_id = str(time.time())[-6:]
+    print(f"\n[{req_id}] api_find_match START: user={request.user.username}, quiz_id={quiz_id}")
+    
+    quiz = get_object_or_404(Quiz, pk=quiz_id)
+
+    # If user already in a match, return that
+    existing_match = Matchmaking.objects.filter(
+        Q(player1=request.user) | Q(player2=request.user),
+        quiz=quiz,
+        status__in=['waiting', 'in_progress']
+    ).first()
+    if existing_match:
+        if existing_match.player2:
+            print(f"[{req_id}] → User already matched in {existing_match.id}")
+            return JsonResponse({'status': 'matched', 'match_id': str(existing_match.id), 'match_lobby_url': reverse('match_lobby', args=[existing_match.id])})
+        print(f"[{req_id}] → User already waiting in {existing_match.id}")
+        return JsonResponse({'status': 'waiting', 'match_id': str(existing_match.id)})
+
+    print(f"[{req_id}] → Starting atomic matching transaction...")
+    
+    # Use atomic transaction to ensure consistency
+    with transaction.atomic():
+        five_minutes_ago = timezone.now() - timedelta(minutes=5)
+
+        # Lock ALL Matchmaking records for this quiz to serialize access
+        # This ensures only one request processes at a time for this quiz
+        locked_matches = list(Matchmaking.objects.select_for_update().filter(
+            quiz=quiz,
+            created_at__gte=five_minutes_ago
+        ))
+        print(f"[{req_id}] → Acquired lock on {len(locked_matches)} total matches for quiz")
+
+        # Now find waiting matches that can be claimed
+        waiting_matches = Matchmaking.objects.filter(
+            quiz=quiz,
+            player2__isnull=True,
+            status='waiting',
+            created_at__gte=five_minutes_ago
+        ).exclude(player1=request.user).order_by('created_at')
+
+        waiting_count = waiting_matches.count()
+        print(f"[{req_id}] → Found {waiting_count} waiting matches to consider")
+
+        from .models import UserProfile
+        for waiting_match in waiting_matches:
+            print(f"[{req_id}]   → Checking {waiting_match.id} (player1={waiting_match.player1.username})")
+            try:
+                player1_profile = UserProfile.objects.get(user=waiting_match.player1)
+            except UserProfile.DoesNotExist:
+                print(f"[{req_id}]   → Delete: no profile")
+                waiting_match.delete()
+                continue
+
+            if (timezone.now() - player1_profile.last_activity) >= timedelta(minutes=5):
+                print(f"[{req_id}]   → Delete: offline (last_activity={player1_profile.last_activity})")
+                waiting_match.delete()
+                continue
+
+            # Try to claim this match
+            print(f"[{req_id}]   → Attempting to claim {waiting_match.id}...")
+            waiting_match.player2 = request.user
+            waiting_match.status = 'in_progress'
+            waiting_match.save()
+            
+            print(f"[{req_id}] ✓ SUCCESS: Matched! Claimed {waiting_match.id}")
+            return JsonResponse({'status': 'matched', 'match_id': str(waiting_match.id), 'match_lobby_url': reverse('match_lobby', args=[waiting_match.id])})
+
+        # No claimable waiting match found - create new one within the transaction
+        print(f"[{req_id}]   → No suitable waiting match, creating new...")
+        new_match = Matchmaking.objects.create(quiz=quiz, player1=request.user, status='waiting')
+        print(f"[{req_id}] ✓ SUCCESS: Created waiting match {new_match.id}")
+        return JsonResponse({'status': 'waiting', 'match_id': str(new_match.id)})
+
+
+
+
+
+@login_required
+def api_check_match(request, match_id):
+    """JSON endpoint to check if a waiting match has been claimed."""
+    match = get_object_or_404(Matchmaking, id=match_id)
+    if match.player2 and match.status == 'in_progress':
+        return JsonResponse({'status': 'matched', 'match_id': str(match.id), 'match_lobby_url': reverse('match_lobby', args=[match.id])})
+    return JsonResponse({'status': 'waiting', 'match_id': str(match.id)})
 
 
 @login_required

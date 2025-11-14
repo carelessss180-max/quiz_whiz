@@ -2,6 +2,67 @@ import uuid
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
+import random
+import string
+
+# --- EMAIL OTP VERIFICATION ---
+class EmailOTP(models.Model):
+    email = models.EmailField(unique=False, db_index=True)
+    otp = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_verified = models.BooleanField(default=False)
+    attempts = models.IntegerField(default=0, help_text="Failed verification attempts")
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.email} - OTP"
+    
+    @staticmethod
+    def generate_otp():
+        """Generate a 6-digit OTP"""
+        return ''.join(random.choices(string.digits, k=6))
+    
+    @staticmethod
+    def create_otp(email):
+        """Create or refresh OTP for an email"""
+        otp_code = EmailOTP.generate_otp()
+        otp_obj, created = EmailOTP.objects.get_or_create(
+            email=email,
+            defaults={'otp': otp_code, 'is_verified': False, 'attempts': 0}
+        )
+        if not created:
+            # Refresh existing OTP
+            otp_obj.otp = otp_code
+            otp_obj.is_verified = False
+            otp_obj.attempts = 0
+            otp_obj.created_at = timezone.now()
+            otp_obj.save()
+        return otp_obj
+    
+    def is_valid(self):
+        """Check if OTP is not expired (valid for 10 minutes)"""
+        from datetime import timedelta
+        expiry_time = self.created_at + timedelta(minutes=10)
+        return timezone.now() < expiry_time
+    
+    def verify_otp(self, provided_otp):
+        """Verify OTP and check validity"""
+        if self.attempts >= 5:
+            return False, "Too many failed attempts"
+        
+        if not self.is_valid():
+            return False, "OTP expired"
+        
+        if self.otp == provided_otp:
+            self.is_verified = True
+            self.save()
+            return True, "OTP verified successfully"
+        
+        self.attempts += 1
+        self.save()
+        return False, f"Invalid OTP ({5 - self.attempts} attempts remaining)"
 
 # --- USER PROFILE FOR ONLINE STATUS ---
 class UserProfile(models.Model):

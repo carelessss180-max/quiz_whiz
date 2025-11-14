@@ -1,6 +1,47 @@
 from django import forms
 from .models import UserProfile
 from django.contrib.auth.models import User
+from django.contrib.auth.forms import UserCreationForm as DjangoUserCreationForm
+
+
+class SignupForm(DjangoUserCreationForm):
+    """Custom signup form with email field"""
+    email = forms.EmailField(
+        required=True,
+        widget=forms.EmailInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Email Address',
+            'autocomplete': 'email'
+        })
+    )
+    
+    class Meta:
+        model = User
+        fields = ('username', 'email', 'password1', 'password2')
+        widgets = {
+            'username': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Username',
+                'autocomplete': 'username'
+            }),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['password1'].widget.attrs.update({
+            'class': 'form-control',
+            'placeholder': 'Password'
+        })
+        self.fields['password2'].widget.attrs.update({
+            'class': 'form-control',
+            'placeholder': 'Confirm Password'
+        })
+    
+    def clean_email(self):
+        email = self.cleaned_data.get('email')
+        if User.objects.filter(email=email).exists():
+            raise forms.ValidationError('Email already registered')
+        return email
 
 
 class UserProfileForm(forms.ModelForm):

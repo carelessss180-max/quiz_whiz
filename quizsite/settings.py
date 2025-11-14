@@ -13,9 +13,32 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 # CORRECT
 from pathlib import Path
 import os
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env file
+# Load environment variables from .env file
+load_dotenv(BASE_DIR / '.env')
+
+# Email Configuration
+# Using Mailtrap SMTP for development/testing
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+
+if EMAIL_HOST_USER and EMAIL_HOST_PASSWORD:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = os.environ.get('EMAIL_HOST', 'sandbox.smtp.mailtrap.io')
+    EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 2525))
+    EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() == 'true'
+else:
+    # Fallback to console backend if credentials not provided
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+DEFAULT_FROM_EMAIL = 'noreply@quizwhiz.com'
+
+
 
 
 # Quick-start development settings - unsuitable for production
@@ -149,6 +172,12 @@ CSRF_TRUSTED_ORIGINS = ['https://quiz-whiz-n1j.onrender.com']
 
 # Django को बताएँ कि WebSocket सर्वर (Daphne) का इस्तेमाल करना है
 ASGI_APPLICATION = 'quizsite.asgi.application'
+
+# ===== EMAIL CONFIGURATION =====
+# For development/testing: Console backend logs emails to console
+# Email Configuration
+# Check if Gmail credentials are provided in environment variables
+
 
 # Channels को बताएँ कि Redis का इस्तेमाल "वेटING रूम" के लिए करना है
 CHANNEL_LAYERS = {
