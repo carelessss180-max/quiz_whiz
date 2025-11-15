@@ -189,3 +189,8 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+# Toggle sending result notification emails (quiz/match results).
+# Set to True if you want to send result emails; default is False so only
+# OTP and password-reset emails are sent when using Gmail in development.
+SEND_RESULT_EMAILS = os.environ.get('SEND_RESULT_EMAILS', 'False').lower() == 'true'

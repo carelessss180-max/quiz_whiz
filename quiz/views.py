@@ -5,6 +5,7 @@ from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.urls import reverse
+from django.conf import settings
 from .models import Quiz, Question, QuizResult, Choice, Challenge, Matchmaking, Badge, UserAchievement, UserFollow, ShareableResult, UserProfile, Notification
 from .forms import UserProfileForm, UserBasicForm
 from django.db.models import Q, Count, Avg, F
@@ -465,7 +466,9 @@ def quiz_result(request, quiz_id):
     # Send email notification
     from .models import EmailNotification
     try:
-        EmailNotification.create_quiz_result_email(request.user, result)
+        # Only send quiz result emails when enabled in settings
+        if getattr(settings, 'SEND_RESULT_EMAILS', False):
+            EmailNotification.create_quiz_result_email(request.user, result)
     except Exception as e:
         print(f"[EMAIL] Failed to send quiz result email: {e}")
     
@@ -1063,10 +1066,12 @@ def match_result(request, match_id):
     # Send email notification to both players
     from .models import EmailNotification
     try:
-        if match.player1.email:
-            EmailNotification.create_match_result_email(match.player1, match)
-        if match.player2 and match.player2.email:
-            EmailNotification.create_match_result_email(match.player2, match)
+        # Only send match result emails when enabled in settings
+        if getattr(settings, 'SEND_RESULT_EMAILS', False):
+            if match.player1.email:
+                EmailNotification.create_match_result_email(match.player1, match)
+            if match.player2 and match.player2.email:
+                EmailNotification.create_match_result_email(match.player2, match)
     except Exception as e:
         print(f"[EMAIL] Failed to send match result email: {e}")
     
